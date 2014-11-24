@@ -1,0 +1,69 @@
+=head1 NAME
+
+SQL::Struct - convenience SQL functions with Class::Struct-like row objects
+
+=head1 SYNOPSIS
+
+    use SQL::Struct;
+
+    SQL::Struct::connect($data_source, $username, $auth);
+
+    my $row = one_row("table", $idField);
+
+    print $row->field;
+
+    $row->field('new data');
+
+    $row->update;
+
+    my $rows = all_rows("table", {field => "some data"});
+
+    print $rows->[0]->field;
+
+=head1 DESCRIPTION
+
+Makes SQL queries from Perl data structures. It uses SQL::Abstract module to 
+parse "where" and "order by" structures. It also supports "group by", "having", 
+"limit", "offset" and mapping function. To make actual queries subclass of 
+DBIx::Connector is used. This class and its singleton connector object can be
+pluggable. 
+
+=head2 connect($data_source, $username, $auth)
+
+This method connects to database or returns already connected connector object.
+For every table in database there's one corresponding class in DBC:: namespaece 
+in CamelBack style after successful connect created. E.g. DBC::ClientData is 
+created for table "client_data".
+
+=over
+
+=item one_row($table, $abstract_where, $order_by, $limit, $offset)
+
+Selects one row from given table and returns its object. $table can be a simple 
+table name or returning data query expression. In last case DBQ:: namespace is 
+used to name class of row object of such a query.
+
+There are some named paramters can be used together with positional paramaters:
+
+=item -group_by
+
+=item -having
+
+=item -order_by
+
+=item -where
+
+=item -limit
+
+=item -offset
+
+
+=item all_rows
+
+=item new_row
+
+=back
+
+=head3 Row object methods
+
+=cut
