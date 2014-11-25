@@ -80,17 +80,21 @@ sub _not_yet_connected {
 	if ($dsn && $dsn !~ /^dbi:/) {
 		$dsn = "dbi:Pg:dbname=$dsn";
 	}
+	my $connect_attrs = {
+		AutoCommit          => 1,
+		PrintError          => 0,
+		AutoInactiveDestroy => 1,
+		RaiseError          => 1,
+		pg_enable_utf8      => 1,
+	};
+	if ($dsn) {
+		my ($driver) = $dsn =~ /^dbi:([^:]+):/;
+		if ($driver && $driver ne 'Pg') {
+			delete $connect_attrs->{pg_enable_utf8};
+		}
+	}
 	if (!@$connector_args) {
-		@$connector_args = (
-			$dsn, $user,
-			$password,
-			{   AutoCommit          => 1,
-				PrSQLERRor          => 0,
-				AutoInactiveDestroy => 1,
-				RaiseError          => 1,
-				pg_enable_utf8      => 1
-			}
-		);
+		@$connector_args = ($dsn, $user, $password, $connect_attrs);
 	}
 	$conn = $connector_module->$connector_constructor(@$connector_args)
 	  or croak {
@@ -131,6 +135,7 @@ sub populate {
 	$conn->run(
 		sub {
 			my $sth = $_->table_info('', '', '%', "TABLE");
+			return if not $sth;
 			my $tables = $sth->fetchall_arrayref;
 			@tables =
 			  map { $_->[2] } grep { $_->[3] eq 'TABLE' and $_->[2] !~ /^sql_/ } @$tables;
@@ -160,6 +165,11 @@ sub setup_row {
 		$conn->run(
 			sub {
 				my $cih = $_->column_info(undef, undef, $table, undef);
+				croak {
+					result  => 'SQLERR',
+					message => "unknown table $table",
+				  }
+				  if not $cih;
 				my $i = 0;
 				while (my $chr = $cih->fetchrow_hashref) {
 					$chr->{COLUMN_NAME} =~ s/"//g;
@@ -254,8 +264,10 @@ sub setup_row {
 			(my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
 			(my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
 			$foreign_tables .= qq|
-		sub $fn { if(defined(\$_[0]->$fk->{FK_COLUMN_NAME})) { return one_row("$pt", {$pk => \$_[0]->$fk->{FK_COLUMN_NAME}}) } else { return } }
-|;
+		sub $fn { 
+			if(defined(\$_[0]->$fk->{FK_COLUMN_NAME})) { return SQL::Struct::one_row("$pt", {$pk => \$_[0]->$fk->{FK_COLUMN_NAME}}) } 
+			else { return } 
+		}\n|;
 		}
 	}
 	my $references_tables = '';
@@ -287,7 +299,7 @@ sub setup_row {
 				}
 			}
 			\$cond{$fk} = \$self->$pk;
-			return all_rows("$rk->{FK_TABLE_NAME}", \\\%cond);
+			return SQL::Struct::all_rows("$rk->{FK_TABLE_NAME}", \\\%cond);
 		}
 		sub ref${ft} {
 			my (\$self, \@cond) = \@_;
@@ -300,7 +312,7 @@ sub setup_row {
 				}
 			}
 			\$cond{$fk} = \$self->$pk;
-			return one_row("$rk->{FK_TABLE_NAME}", \\\%cond);
+			return SQL::Struct::one_row("$rk->{FK_TABLE_NAME}", \\\%cond);
 		}
 |;
 		}
@@ -564,7 +576,7 @@ sub setup_row {
 	  $filter_timestamp, $set, $data, $fetch,
 	  $update, $delete, $destroy, $accessors, $foreign_tables,
 	  $references_tables;
-	print $eval_code;
+	#	print $eval_code;
 	eval $eval_code;
 	return $ncn;
 }
@@ -724,7 +736,7 @@ sub new_row {
 	my $one_table = (index ($table, " ") == -1);
 	croak {
 		result  => 'SQLERR',
-		message => "new row cant work for many tables"
+		message => "new row cant work for multiple tables"
 	  }
 	  if !$one_table;
 	my $ncn = setup_row($table);

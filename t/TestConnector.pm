@@ -5,7 +5,7 @@ sub new {
 	my $self = {
 		pos       => 0,
 		data_info => $data_info || [],
-		data      => $data || [[]],
+		data      => $data || [],
 	};
 	bless $self, $class;
 }
@@ -26,7 +26,7 @@ sub fetchall_arrayref {
 	} else {
 		return $self->{data};
 	}
-
+	return $ret;
 }
 
 sub fetch {
@@ -69,6 +69,9 @@ sub finish {
 sub execute {
 	my ($self, @params) = @_;
 	$TestConnector::sql_bind = "'" . join ("','", @params) . "'";
+	if(@params && $params[0] =~ /^\d+$/) {
+		$self->{pos} = $params[0] - 1;
+	}
 	return "0E0";
 }
 

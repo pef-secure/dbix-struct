@@ -1,4 +1,4 @@
-use lib qw'../lib';
+use lib qw'../lib lib t';
 use TestConnector;
 use SQL::Struct (connector => 'TestConnector');
 use Test::More;
@@ -38,5 +38,10 @@ ok( $query eq
 
 my $list = one_row("list", 1);
 ok($list && $list->ref eq 'reference1', 'select data');
-
+ok($list && ref ($list->refPlAssocList) eq 'DBC::PlAssoc',
+	'got back reference');
+ok($list && ref ($list->refPlAssocList->Prim) eq 'DBC::Prim',
+	'got back reference and direct reference');
+ok($list && $list->refPlAssocList->Prim->payload eq 'pay1',
+	'got data from associated table');
 done_testing();
