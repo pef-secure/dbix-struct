@@ -69,7 +69,7 @@ sub finish {
 sub execute {
 	my ($self, @params) = @_;
 	$TestConnector::sql_bind = "'" . join ("','", @params) . "'";
-	if(@params && $params[0] =~ /^\d+$/) {
+	if (@params && $params[0] =~ /^\d+$/) {
 		$self->{pos} = $params[0] - 1;
 	}
 	return "0E0";
@@ -291,6 +291,7 @@ sub selectrow_array {
 	my ($dbh, $query, $attr, @params) = @_;
 	$TestConnector::sql_query = $query;
 	$TestConnector::sql_bind = "'" . join ("','", @params) . "'";
+	return @{[1]} if $query =~ /returning /;
 	return ();
 }
 
@@ -299,6 +300,12 @@ sub do {
 	$TestConnector::sql_query = $query;
 	$TestConnector::sql_bind = "'" . join ("','", @params) . "'";
 	return "0E0";
+}
+
+sub errstr {
+	my ($dbh) = @_;
+	print STDERR "error: $TestConnector::sql_query; $TestConnector::sql_bind\n";
+	return "ERROR!!!";
 }
 
 package TestConnector;
@@ -321,8 +328,8 @@ sub mode {
 }
 
 sub query {
-#	print "query: $sql_query\n";
-#	print "bind: $sql_bind\n";
+	#	print "query: $sql_query\n";
+	#	print "bind: $sql_bind\n";
 	return ($sql_query, $sql_bind);
 }
 

@@ -471,7 +471,7 @@ sub setup_row {
 					(\$where, \@bind_where) = SQL::Abstract->new->where(\$cond);
 				}
 				\$SQL::Struct::conn->run(sub {
-					\$_->do(qq{update $table \$set \$where}, undef, \@bind, \@bind_where)
+					\$_->do(qq{update $table set \$set \$where}, undef, \@bind, \@bind_where)
 					or croak {
 						result  => 'SQLERR',
 						message => 'error '.\$_->errstr.' updating table $table'

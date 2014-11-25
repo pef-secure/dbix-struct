@@ -44,4 +44,17 @@ ok($list && ref ($list->refPlAssocList->Prim) eq 'DBC::Prim',
 	'got back reference and direct reference');
 ok($list && $list->refPlAssocList->Prim->payload eq 'pay1',
 	'got data from associated table');
+DBC::List->update({ref => 33}, {id => 1});
+($query, $bind) = TestConnector::query();
+ok($query eq 'update list set ref = ?  WHERE ( id = ? )' && $bind eq "'33','1'",
+	'table update');
+DBC::List->delete({id => 1});
+($query, $bind) = TestConnector::query();
+ok($query eq 'delete from list  WHERE ( id = ? )' && $bind eq "'1'",
+	'table delete');
+new_row("list", ref => 44);
+($query, $bind) = TestConnector::query();
+ok($query eq 'insert into list (ref) values (?) returning id' && $bind eq "'44'",
+	'table insert');
+#print "query: $query\nbind: $bind\n";
 done_testing();

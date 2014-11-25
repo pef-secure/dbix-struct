@@ -106,9 +106,57 @@ C<new_row> subroutine. If you need to set all columns from table then:
 
 =head2 new
 
+Creates new row in the table. This is the same as C<new_row()> except table name is already 
+known from class name. 
+
+    my $row = DBC::Table->new(email => 'a@bb.com', password => '12345');
+
 =head2 set
 
+Sets values of table columns. Has three forms:
+
+=over
+
+=item set([...])
+
+ Sets internal row data.
+ 
+=item set({column => $value, ... })
+
+ Sets column(s) value(s)
+ 
+=item set(column => $value, ... )
+
+ Same as above but without anonymous hash.
+ 
+=back
+
+This method is useful when you can't use accessors. For example, when you 
+have column name 'new' in your table.
+
 =head2 data
+
+Returns values of the row. Hash four forms:
+
+=over
+
+=item data()
+
+ No parameters means to return all columns in anonymous hash {column => "value", ... }.
+
+=item data([])
+
+ Empty array reference means internal row data.
+ 
+=item data([qw|column columnt2|])
+
+ Non-empty array means array of values for corresponding columns.
+ 
+=item data({column => undef, columnt2 => undef})
+
+ Returns given columns set in anonymous hash {column => "value", ... }.
+
+=back
 
 =head2 update
 
