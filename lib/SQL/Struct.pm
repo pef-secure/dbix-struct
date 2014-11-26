@@ -578,7 +578,7 @@ sub setup_row {
 	  $filter_timestamp, $set, $data, $fetch,
 	  $update, $delete, $destroy, $accessors, $foreign_tables,
 	  $references_tables;
-	#	print $eval_code;
+#print $eval_code;
 	eval $eval_code;
 	return $ncn;
 }

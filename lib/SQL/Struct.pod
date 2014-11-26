@@ -1,6 +1,6 @@
 =head1 NAME
 
- SQL::Struct - convenience SQL functions with Class::Struct-like row objects
+SQL::Struct - convenience SQL functions with Class::Struct-like row objects
 
 =head1 SYNOPSIS
 
@@ -28,14 +28,14 @@ parse "where" and "order by" structures. It also supports "group by", "having",
 L<DBIx::Connector> is used. This class and its singleton connector object can be
 pluggable. 
 
-=head2 connect($data_source, $username, $auth)
+=head3 C<connect($data_source, $username, $auth)>
 
 This method connects to database or returns already connected connector object.
 For every table in database there's one corresponding class in DBC:: namespaece 
 in CamelCase style after successful connect created. E.g. DBC::ClientData is 
 created for table "client_data".
 
-=head2 one_row($table, $abstract_where, $order_by, $limit, $offset)
+=head3 C<one_row($table, $abstract_where, $order_by, $limit, $offset)>
 
 Selects one row from given table and returns its object. $table can be a simple 
 table name or returning data query expression. In last case DBQ:: namespace is 
@@ -81,7 +81,7 @@ Generates "LIMIT $X OFFSET $Y" SQL-clause.
 
 =back
 
-=head2 all_rows($table, $abstract_where, $order_by, $limit, $offset)
+=head2 C<all_rows($table, $abstract_where, $order_by, $limit, $offset)>
 
 This is just like previous C<one_row> but returns array of row objects. 
 It has one more "floating" parameter: you can specify CODE reference in any 
@@ -94,7 +94,7 @@ place and it will be used as "mapping function".
 This anonymous function is called for every row clearing timestamps from microseconds part 
 and converting every row object into anonymous hash.
 
-=head2 new_row("table", column => $value, column2 => $value2, ...)
+=head3 C<new_row("table", column => $value, column2 => $value2, ...)>
 
 Inserts new row into table. Returns row object with set primary columns and passed in 
 C<new_row> subroutine. If you need to set all columns from table then:
@@ -102,30 +102,30 @@ C<new_row> subroutine. If you need to set all columns from table then:
     my $row = new_row("table", column => $value);
     $row->fetch;
 
-=head1 Row object methods
+=head2 Row object methods
 
-=head2 new
+=head3 C<new>
 
 Creates new row in the table. This is the same as C<new_row()> except table name is already 
 known from class name. 
 
     my $row = DBC::Table->new(email => 'a@bb.com', password => '12345');
 
-=head2 set
+=head3 C<set>
 
 Sets values of table columns. Has three forms:
 
 =over
 
-=item set([...])
+=item C<set([...])>
 
  Sets internal row data.
  
-=item set({column => $value, ... })
+=item C<set({column => $value, ... })>
 
  Sets column(s) value(s)
  
-=item set(column => $value, ... )
+=item C<set(column => $value, ... )>
 
  Same as above but without anonymous hash.
  
@@ -134,41 +134,41 @@ Sets values of table columns. Has three forms:
 This method is useful when you can't use accessors. For example, when you 
 have column name 'new' in your table.
 
-=head2 data
+=head3 C<data>
 
 Returns values of the row. Has four forms:
 
 =over
 
-=item data()
+=item C<data()>
 
  No parameters means to return all columns in anonymous hash {column => "value", ... }.
 
-=item data([])
+=item C<data([])>
 
  Empty array reference means internal row data.
  
-=item data([qw|column columnt2|])
+=item C<data([qw|column columnt2|])>
 
  Non-empty array means array of values for corresponding columns.
  
-=item data({column => undef, columnt2 => undef})
+=item C<data({column => undef, columnt2 => undef})>
 
  Returns given columns set in anonymous hash {column => "value", ... }.
 
 =back
 
-=head2 update
+=head3 C<update>
 
 Updates its row or table
 
 =over
 
-=item update()
+=item C<update()>
 
 Updates changed (if any) columns of the row.
 
-=item update({column => "value"}, $where)
+=item C<update({column => "value"}, $where)>
 
 Updates table. For example:
 
@@ -182,17 +182,17 @@ with bind values 33, 1
 
 =back
 
-=head2 delete
+=head3 C<delete>
 
 Deletes the row or rows from the table.
 
 =over
 
-=item delete()
+=item C<delete()>
 
 Deletes the row if the row has primary key.
 
-=item delete( $where)
+=item C<delete($where)>
 
 deletes row(s) from table. For example:
 
@@ -206,22 +206,20 @@ with bind value 1
 
 =back
 
-=head2 filter_timestamp
+=head3 C<filter_timestamp>
 
 Removes microseconds from timestamp columns. 
  
  2010-05-19 23:30:01.737126 -> 2010-05-19 23:30:01
 
-=head2 fetch
+=head3 C<fetch>
 
 Fetches the whole row data from table. Useful when primary key is known after
 insert but other columns are set by database.
 
-=head2 accessors
+=head3 B<Accessors>
 
 All column names from table except special keywords are accessible via accessors:
-
-=over
 
  my $prim = one_row("prim", 1);
  print "payload: " .  $prim->payload . "\n";
@@ -232,12 +230,50 @@ All column names from table except special keywords are accessible via accessors
 Here $prim->payload("pay never") sets new column value. To store it explicitly 
 call $prim->update. By default update is called on row object destruction.
 
-=back
+=head2 Syntax sugar
 
-=head1 Syntax sugar
+=head3 Referenced tables
 
-=head2 referenced table
+Suppose you have two tables employer and employee:
 
-=head2 referenced by table
+ employer:
+    id_employer,
+    name
+  
+ employee:
+    id_employee,
+    id_employer references employer (id_employer),
+    id_employee_invited_by
+    name
 
+ alter table employee add constraint fk_employee_employee 
+     foreign key (id_employee_invited_by) references employee (id_employee);
+
+ my $employee = one_row("employee", {name => 'John'});
+ my $employer = $employee->Employer;
+ 
+Actually, C<$employee->Employer> is just the same as <one_row("employer", $employee->id)>.
+
+=head3 Referenced by table
+
+Now you want to find all people invited by one employee:
+
+ my $referenced_by = $employee->refEmployeeInvitedBys;
+ 
+Or only those with name 'Robert':
+
+ my $robert_associates = $employee->Employer->refEmployees(name => 'Robert');
+
+These names "refEmployees", "refEmployee" and alike are made up from:
+
+ "ref" . $TableName . $suffix . $plural
+ 
+C<$plural> is "s" for plural (C<all_rows>) and empty for singular (C<one_row>).
+C<$suffix> is used when foreign key column name contains something more then 
+just referenced table name and "_id" or "id_". 
+
+C<id_employer> of C<employee> makes methods C<refEmployee> and C<refEmployees> 
+in class C<DBC::Employer>. And C<id_employee_invited_by> makes methods
+C<refEmployeeInvitedBy> and C<refEmployeeInvitedBys>.
+  
 =cut
