@@ -76,33 +76,35 @@ sub _connected {
 }
 
 sub _not_yet_connected {
-	my ($dsn, $user, $password) = @_;
-	if ($dsn && $dsn !~ /^dbi:/) {
-		$dsn = "dbi:Pg:dbname=$dsn";
-	}
-	my $connect_attrs = {
-		AutoCommit          => 1,
-		PrintError          => 0,
-		AutoInactiveDestroy => 1,
-		RaiseError          => 1,
-		pg_enable_utf8      => 1,
-	};
-	if ($dsn) {
-		my ($driver) = $dsn =~ /^dbi:([^:]+):/;
-		if ($driver && $driver ne 'Pg') {
-			delete $connect_attrs->{pg_enable_utf8};
+	if (not $conn) {
+		my ($dsn, $user, $password) = @_;
+		if ($dsn && $dsn !~ /^dbi:/) {
+			$dsn = "dbi:Pg:dbname=$dsn";
 		}
+		my $connect_attrs = {
+			AutoCommit          => 1,
+			PrintError          => 0,
+			AutoInactiveDestroy => 1,
+			RaiseError          => 1,
+			pg_enable_utf8      => 1,
+		};
+		if ($dsn) {
+			my ($driver) = $dsn =~ /^dbi:([^:]+):/;
+			if ($driver && $driver ne 'Pg') {
+				delete $connect_attrs->{pg_enable_utf8};
+			}
+		}
+		if (!@$connector_args) {
+			@$connector_args = ($dsn, $user, $password, $connect_attrs);
+		}
+		$conn = $connector_module->$connector_constructor(@$connector_args)
+		  or croak {
+			answer => "SQL_connect error",
+			result => 'SQLERR',
+		  };
+		$conn->mode('fixup');
+		populate();
 	}
-	if (!@$connector_args) {
-		@$connector_args = ($dsn, $user, $password, $connect_attrs);
-	}
-	$conn = $connector_module->$connector_constructor(@$connector_args)
-	  or croak {
-		answer => "SQL_connect error",
-		result => 'SQLERR',
-	  };
-	$conn->mode('fixup');
-	populate();
 	no warnings 'redefine';
 	*connect = \&_connected;
 	$conn;
