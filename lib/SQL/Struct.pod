@@ -136,7 +136,7 @@ have column name 'new' in your table.
 
 =head2 data
 
-Returns values of the row. Hash four forms:
+Returns values of the row. Has four forms:
 
 =over
 
@@ -160,18 +160,84 @@ Returns values of the row. Hash four forms:
 
 =head2 update
 
+Updates its row or table
+
+=over
+
+=item update()
+
+Updates changed (if any) columns of the row.
+
+=item update({column => "value"}, $where)
+
+Updates table. For example:
+
+ DBC::List->update({ref => 33}, {id => 1});
+ 
+Means 
+ 
+ update list ref = ?  WHERE ( id = ? )
+
+with bind values 33, 1
+
+=back
+
 =head2 delete
+
+Deletes the row or rows from the table.
+
+=over
+
+=item delete()
+
+Deletes the row if the row has primary key.
+
+=item delete( $where)
+
+deletes row(s) from table. For example:
+
+ DBC::List->delete({id => 1});
+ 
+Means 
+ 
+ delete from list WHERE ( id = ? )
+
+with bind value 1
+
+=back
 
 =head2 filter_timestamp
 
+Removes microseconds from timestamp columns. 
+ 
+ 2010-05-19 23:30:01.737126 -> 2010-05-19 23:30:01
+
 =head2 fetch
+
+Fetches the whole row data from table. Useful when primary key is known after
+insert but other columns are set by database.
 
 =head2 accessors
 
-=head2 Syntax sugar
+All column names from table except special keywords are accessible via accessors:
 
-=head3 referenced table
+=over
 
-=head3 referenced by table
+ my $prim = one_row("prim", 1);
+ print "payload: " .  $prim->payload . "\n";
+ # new data
+ $prim->payload("pay never");
+ $prim->update;
+ 
+Here $prim->payload("pay never") sets new column value. To store it explicitly 
+call $prim->update. By default update is called on row object destruction.
+
+=back
+
+=head1 Syntax sugar
+
+=head2 referenced table
+
+=head2 referenced by table
 
 =cut
