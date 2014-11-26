@@ -255,7 +255,8 @@ Suppose you have two tables employer and employee:
  my $employee = one_row("employee", {name => 'John'});
  my $employer = $employee->Employer;
  
-Actually, C<$employee->Employer> is just the same as <one_row("employer", $employee->id)>.
+Actually, C<< $employee->Employer >> is just the same as 
+C<< one_row("employer", $employee->id) >>.
 
 =head3 Referenced by table
 
