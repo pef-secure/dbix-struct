@@ -103,8 +103,8 @@ sub _not_yet_connected {
 			result => 'SQLERR',
 		  };
 		$conn->mode('fixup');
-		populate();
 	}
+	populate();
 	no warnings 'redefine';
 	*connect = \&_connected;
 	$conn;
