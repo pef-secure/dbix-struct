@@ -256,7 +256,7 @@ Suppose you have two tables employer and employee:
  my $employer = $employee->Employer;
  
 Actually, C<< $employee->Employer >> is just the same as 
-C<< one_row("employer", $employee->id) >>.
+C<< one_row("employer", $employee->id_employer) >>.
 
 =head3 Referenced by table
 
