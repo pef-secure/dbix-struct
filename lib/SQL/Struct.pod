@@ -81,7 +81,7 @@ Generates "LIMIT $X OFFSET $Y" SQL-clause.
 
 =back
 
-=head2 C<all_rows($table, $abstract_where, $order_by, $limit, $offset)>
+=head3 C<all_rows($table, $abstract_where, $order_by, $limit, $offset)>
 
 This is just like previous C<one_row> but returns array of row objects. 
 It has one more "floating" parameter: you can specify CODE reference in any 
@@ -94,7 +94,7 @@ place and it will be used as "mapping function".
 This anonymous function is called for every row clearing timestamps from microseconds part 
 and converting every row object into anonymous hash.
 
-=head3 C<new_row("table", column => $value, column2 => $value2, ...)>
+=head3 C<< new_row("table", column => $value, column2 => $value2, ...) >>
 
 Inserts new row into table. Returns row object with set primary columns and passed in 
 C<new_row> subroutine. If you need to set all columns from table then:
@@ -121,11 +121,11 @@ Sets values of table columns. Has three forms:
 
  Sets internal row data.
  
-=item C<set({column => $value, ... })>
+=item C<< set({column => $value, ... }) >>
 
  Sets column(s) value(s)
  
-=item C<set(column => $value, ... )>
+=item C<< set(column => $value, ... ) >>
 
  Same as above but without anonymous hash.
  
@@ -152,7 +152,7 @@ Returns values of the row. Has four forms:
 
  Non-empty array means array of values for corresponding columns.
  
-=item C<data({column => undef, columnt2 => undef})>
+=item C<< data({column => undef, columnt2 => undef}) >>
 
  Returns given columns set in anonymous hash {column => "value", ... }.
 
@@ -168,7 +168,7 @@ Updates its row or table
 
 Updates changed (if any) columns of the row.
 
-=item C<update({column => "value"}, $where)>
+=item C<< update({column => "value"}, $where) >>
 
 Updates table. For example:
 
