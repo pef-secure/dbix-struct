@@ -228,7 +228,10 @@ All column names from table except special keywords are accessible via accessors
  $prim->update;
  
 Here $prim->payload("pay never") sets new column value. To store it explicitly 
-call $prim->update. By default update is called on row object destruction.
+call $prim->update. By default update is called on row object destruction. 
+To include a random snippet of SQL verbatim, you specify it as a scalar reference.
+
+ $client->bonus(\"bonus + 10");
 
 =head2 Syntax sugar
 
@@ -275,5 +278,43 @@ just referenced table name and "_id" or "id_".
 C<id_employer> of C<employee> makes methods C<refEmployee> and C<refEmployees> 
 in class C<DBC::Employer>. And C<id_employee_invited_by> makes methods
 C<refEmployeeInvitedBy> and C<refEmployeeInvitedBys>.
-  
+
+=head2 Real-world usage scenarios 
+
+  sub get_client {
+ 	my $session = one_row("session", {session => $input->{session}, ip => $input->{ip}});
+	NoUser->throw("User is not logged in or does not exist") unless defined $session;
+	my $client = $session->Client;
+	$client->filter_timestamp;
+	BlkUser->throw   if $client->state eq 'blocked';
+	$session->expire(\("now() + interval '2 day'"));
+	$session->update;
+	return $client;
+  }
+
+=head1 Known issues
+
+This module is tested only with PostgreSQL database. If you need other database 
+support be prepared to help me to test and debug it.
+
+=head1 See also
+
+=over
+
+=item * L<DBIx::Connector>
+
+=item * L<SQL::Abstract>
+
+=back
+
+=head1 Authors
+
+This module was written and is maintained by:
+
+=over
+
+=item * PEF Developer <pef-secure@yandex.ru>
+
+=back
+
 =cut
