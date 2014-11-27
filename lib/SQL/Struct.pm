@@ -30,6 +30,11 @@ our @EXPORT = qw{
   all_rows
   new_row
 };
+
+our @EXPORT_OK = qw{
+  $conn
+};
+
 our $conn;
 our $update_on_destroy     = 1;
 our $connector_module      = 'SQL::Struct::Connector';
@@ -38,30 +43,29 @@ our $connector_args        = [];
 our $connector_driver;
 our %driver_pk_insert;
 
-BEGIN {
-	%driver_pk_insert = (
-		Pg => sub {
-			my ($table, $pk_bind, $pk_return) = @_;
-			(   $pk_bind
-				? qq|
+%driver_pk_insert = (
+	Pg => sub {
+		my ($table, $pk_bind, $pk_return) = @_;
+		(   $pk_bind
+			? qq|
 						($pk_bind) =
 							\$_->selectrow_array('insert into $table (' . join (", ", keys \%insert) . ") values ("
 								. join(",", ('?') x scalar(keys \%insert) ) . ") $pk_return", undef, values \%insert)
 |
-				: qq|
+			: qq|
 						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
 								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
 |
-			  ) . qq|
+		  ) . qq|
 						or croak {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' inserting into table $table'
 						};
 |;
-		},
-		mysql => sub {
-			my ($table, $pk_bind, $pk_return) = @_;
-			qq|
+	},
+	mysql => sub {
+		my ($table, $pk_bind, $pk_return) = @_;
+		qq|
 						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
 								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
 						or croak {
@@ -69,14 +73,13 @@ BEGIN {
 							message => 'error '.\$_->errstr.' inserting into table $table'
 						};
 |
-			  . (
-				$pk_bind
-				? qq|\t\t\t\t\t\t$pk_bind = $_->last_insert_id(undef, undef, undef, undef);\n|
-				: ''
-			  );
-		}
-	);
-}
+		  . (
+			$pk_bind
+			? qq|\t\t\t\t\t\t$pk_bind = $_->last_insert_id(undef, undef, undef, undef);\n|
+			: ''
+		  );
+	}
+);
 
 sub check_package_scalar {
 	my ($package, $scalar) = @_;
@@ -88,29 +91,28 @@ sub check_package_scalar {
 }
 
 sub import {
-	my ($class, @args) = @_;
 	my $defconn = 0;
-	for (my $i = 0 ; $i < @args ; ++$i) {
-		if ($args[$i] eq 'connector') {
-			(undef, $connector_module) = splice @args, $i, 2;
+	for (my $i = 1 ; $i < @_ ; ++$i) {
+		if ($_[$i] eq 'connector') {
+			(undef, $connector_module) = splice @_, $i, 2;
 			--$i;
 			if (not $defconn and check_package_scalar($connector_module, 'conn')) {
 				*conn = \${$connector_module . '::conn'};
 			}
-		} elsif ($args[$i] eq 'constructor') {
-			(undef, $connector_constructor) = splice @args, $i, 2;
+		} elsif ($_[$i] eq 'constructor') {
+			(undef, $connector_constructor) = splice @_, $i, 2;
 			--$i;
-		} elsif ($args[$i] eq 'args') {
-			(undef, $connector_args) = splice @args, $i, 2;
+		} elsif ($_[$i] eq 'args') {
+			(undef, $connector_args) = splice @_, $i, 2;
 			--$i;
-		} elsif ($args[$i] eq 'connector_object') {
+		} elsif ($_[$i] eq 'connector_object') {
 			$defconn = 1;
-			my (undef, $connector_object) = splice @args, $i, 2;
+			my (undef, $connector_object) = splice @_, $i, 2;
 			--$i;
 			*conn = \${$connector_object};
 		}
 	}
-	$class->export_to_level(1, @args);
+	$_[0]->export_to_level(1, @_);
 }
 
 sub _connected {
