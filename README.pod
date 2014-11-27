@@ -57,3 +57,14 @@ How to access this structure
  $session->expires(\("now() + interval '2 day'"));
  $session->update;
  my $usd_balance = $client->refClientBalance(currency => "USD");
+ 
+To use SQL 
+
+ use SQL::Struct qw($conn);
+ # ... 
+ my $name;
+ $conn->run(sub {
+   ($name) = $_->selectrow_array('select name from client join '
+     . 'session on (id = id_client) where session_key = ?', undef, $input->{session})
+   }
+ );
