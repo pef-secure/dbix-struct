@@ -35,6 +35,48 @@ our $update_on_destroy     = 1;
 our $connector_module      = 'SQL::Struct::Connector';
 our $connector_constructor = 'new';
 our $connector_args        = [];
+our $connector_driver;
+our %driver_pk_insert;
+
+BEGIN {
+	%driver_pk_insert = (
+		Pg => sub {
+			my ($table, $pk_bind, $pk_return) = @_;
+			(   $pk_bind
+				? qq|
+						($pk_bind) =
+							\$_->selectrow_array('insert into $table (' . join (", ", keys \%insert) . ") values ("
+								. join(",", ('?') x scalar(keys \%insert) ) . ") $pk_return", undef, values \%insert)
+|
+				: qq|
+						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
+								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
+|
+			  ) . qq|
+						or croak {
+							result  => 'SQLERR',
+							message => 'error '.\$_->errstr.' inserting into table $table'
+						};
+|;
+		},
+		mysql => sub {
+			my ($table, $pk_bind, $pk_return) = @_;
+			qq|
+						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
+								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
+						or croak {
+							result  => 'SQLERR',
+							message => 'error '.\$_->errstr.' inserting into table $table'
+						};
+|
+			  . (
+				$pk_bind
+				? qq|\t\t\t\t\t\t$pk_bind = $_->last_insert_id(undef, undef, undef, undef);\n|
+				: ''
+			  );
+		}
+	);
+}
 
 sub check_package_scalar {
 	my ($package, $scalar) = @_;
@@ -86,12 +128,15 @@ sub _not_yet_connected {
 			PrintError          => 0,
 			AutoInactiveDestroy => 1,
 			RaiseError          => 1,
-			pg_enable_utf8      => 1,
 		};
 		if ($dsn) {
 			my ($driver) = $dsn =~ /^dbi:([^:]+):/;
-			if ($driver && $driver ne 'Pg') {
-				delete $connect_attrs->{pg_enable_utf8};
+			if ($driver) {
+				if ($driver eq 'Pg') {
+					$connect_attrs->{pg_enable_utf8} = 1;
+				} elsif ($driver eq 'mysql') {
+					$connect_attrs->{mysql_enable_utf8} = 1;
+				}
 			}
 		}
 		if (!@$connector_args) {
@@ -104,6 +149,7 @@ sub _not_yet_connected {
 		  };
 		$conn->mode('fixup');
 	}
+	$connector_driver = $conn->driver->{driver};
 	populate();
 	no warnings 'redefine';
 	*connect = \&_connected;
@@ -150,6 +196,11 @@ sub _row_data ()    { 0 }
 sub _row_updates () { 1 }
 
 sub setup_row {
+	croak {
+		result  => 'SQLERR',
+		message => "Unsupported driver $connector_driver",
+	  }
+	  unless exists $driver_pk_insert{$connector_driver};
 	my ($table, $ncn) = @_;
 	$ncn ||= make_name($table);
 	no strict "refs";
@@ -169,7 +220,7 @@ sub setup_row {
 				my $cih = $_->column_info(undef, undef, $table, undef);
 				croak {
 					result  => 'SQLERR',
-					message => "unknown table $table",
+					message => "Unknown table $table",
 				  }
 				  if not $cih;
 				my $i = 0;
@@ -238,9 +289,7 @@ sub setup_row {
 	if (@pkeys) {
 		@pk_fields{@pkeys} = undef;
 		$pk_bind =
-		    '('
-		  . join (", ", map { qq|\$self->[@{[_row_data]}]->[$fields{"$_"}]| } @pkeys)
-		  . ')';
+		  join (", ", map { qq|\$self->[@{[_row_data]}]->[$fields{"$_"}]| } @pkeys);
 		$pk_return = 'returning ' . join (", ", @pkeys);
 		$pk_where = join (" and ", map { "$_ = ?" } @pkeys);
 		$select_keys =
@@ -374,28 +423,11 @@ sub setup_row {
 		(not ref $table)
 		? qq|
 				\$SQL::Struct::conn->run(
-					sub {
-| . (       $pk_bind
-			? qq|
-						$pk_bind =
-							\$_->selectrow_array('insert into $table (' . join (", ", keys \%insert) . ") values ("
-								. join(",", ('?') x scalar(keys \%insert) ) . ") $pk_return", undef, values \%insert)
-|
-			: qq|
-						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
-								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
-|
-		  ) . qq|
-						or croak {
-							result  => 'SQLERR',
-							message => 'error '.\$_->errstr.' inserting into table $table'
-						};
-					}
-				);
-|
+					sub {\n| . $driver_pk_insert{$connector_driver}->($table, $pk_bind, $pk_return)
 		: ''
 	  )
 	  . qq|
+	  				});
 				}
 	  			return bless \$self, \$class;
 		}\n|;
@@ -578,7 +610,7 @@ sub setup_row {
 	  $filter_timestamp, $set, $data, $fetch,
 	  $update, $delete, $destroy, $accessors, $foreign_tables,
 	  $references_tables;
-#print $eval_code;
+	#print $eval_code;
 	eval $eval_code;
 	return $ncn;
 }

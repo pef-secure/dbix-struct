@@ -327,6 +327,8 @@ sub mode {
 	1;
 }
 
+sub driver { {driver => 'Pg'} }
+
 sub query {
 	#	print "query: $sql_query\n";
 	#	print "bind: $sql_bind\n";
