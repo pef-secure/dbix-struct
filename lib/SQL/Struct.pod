@@ -300,7 +300,7 @@ C<refEmployeeInvitedBy> and C<refEmployeeInvitedBys>.
 	my $client = $session->Client;
 	$client->filter_timestamp;
 	BlkUser->throw   if $client->state eq 'blocked';
-	$session->expire(\("now() + interval '2 day'"));
+	$session->expire(\"now() + interval '2 day'");
 	$session->update;
 	return $client;
   }

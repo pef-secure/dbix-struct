@@ -54,7 +54,7 @@ How to access this structure
    unless defined $session;
  my $client = $session->Client;
  $client->filter_timestamp;
- $session->expires(\("now() + interval '2 day'"));
+ $session->expires(\"now() + interval '2 day'");
  $session->update;
  my $usd_balance = $client->refClientBalance(currency => "USD");
  
