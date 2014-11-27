@@ -94,8 +94,6 @@ place and it will be used as "mapping function".
 This anonymous function is called for every row clearing timestamps from microseconds part 
 and converting every row object into anonymous hash.
 
-=head2 Queries
-
 It's possible to use C<all_rows()> and C<one_row()> not only for simple table 
 select but for joined queries also. 
 
