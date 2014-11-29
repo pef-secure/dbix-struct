@@ -1,12 +1,12 @@
 =head1 NAME
 
-SQL::Struct - convenience SQL functions with Class::Struct-like row objects
+DBIx::Struct - convenience SQL functions with Class::Struct-like row objects
 
 =head1 SYNOPSIS
 
-    use SQL::Struct;
+    use DBIx::Struct;
 
-    SQL::Struct::connect($data_source, $username, $auth);
+    DBIx::Struct::connect($data_source, $username, $auth);
 
     my $row = one_row("table", $idField);
 
@@ -25,15 +25,17 @@ SQL::Struct - convenience SQL functions with Class::Struct-like row objects
 Makes SQL queries from Perl data structures. It uses L<SQL::Abstract> module to 
 parse "where" and "order by" structures. It also supports "group by", "having", 
 "limit", "offset" and mapping function. To make actual queries subclass of 
-L<DBIx::Connector> is used. This class and its singleton connector object can be
-pluggable. 
+L<DBIx::Connector> is used. The main pupose of this module is to provide a very 
+easy, simple and efficient interface to database. Internally every row is just 
+an array of values and every accessor knows its offset in that array. This is 
+much more efficient as storing row in hash.
 
 =head3 C<connect($data_source, $username, $auth)>
 
 This method connects to database or returns already connected connector object.
 For every table in database there's one corresponding class in DBC:: namespaece 
 in CamelCase style after successful connect created. E.g. DBC::ClientData is 
-created for table "client_data".
+created for table "client_data". This namespace is configurable.
 
 =head3 C<one_row($table, $abstract_where, $order_by, $limit, $offset)>
 
@@ -295,14 +297,21 @@ C<refEmployeeInvitedBy> and C<refEmployeeInvitedBys>.
 =head2 Real-world usage scenarios 
 
   sub get_client {
- 	my $session = one_row("session", {session => $input->{session}, ip => $input->{ip}});
-	NoUser->throw("User is not logged in or does not exist") unless defined $session;
-	my $client = $session->Client;
-	$client->filter_timestamp;
-	BlkUser->throw   if $client->state eq 'blocked';
-	$session->expire(\"now() + interval '2 day'");
-	$session->update;
-	return $client;
+  # get session object
+    my $session = one_row("session", {session => $input->{session}, ip => $input->{ip}});
+  # throw exception when there's no session
+    NoUser->throw("User is not logged in or does not exist") unless defined $session;
+  # get client's row
+    my $client = $session->Client;
+  # strip microseconds part
+    $client->filter_timestamp;
+  # throw exception if client is blocked
+    BlkUser->throw   if $client->state eq 'blocked';
+  # set expire date
+    $session->expire(\"now() + interval '2 day'");
+  # update session
+    $session->update;
+    return $client;
   }
 
 =head1 Known issues

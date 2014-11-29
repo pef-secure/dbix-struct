@@ -1,12 +1,12 @@
 =head1 NAME
 
-SQL::Struct - convenience SQL functions with Class::Struct-like row objects
+DBIx::Struct - convenience SQL functions with Class::Struct-like row objects
 
 =head1 SYNOPSIS
 
-    use SQL::Struct;
+    use DBIx::Struct;
 
-    SQL::Struct::connect($data_source, $username, $auth);
+    DBIx::Struct::connect($data_source, $username, $auth);
 
     my $row = one_row("table", $idField);
 
@@ -49,18 +49,26 @@ Suppose you have tables
    
 How to access this structure
 
- my $session = one_row("session", {session_key => $input->{session}});
- NoUser->throw("User is not logged in or does not exist") 
-   unless defined $session;
- my $client = $session->Client;
- $client->filter_timestamp;
- $session->expires(\"now() + interval '2 day'");
- $session->update;
- my $usd_balance = $client->refClientBalance(currency => "USD");
+ # get session object
+   my $session = one_row("session", {session => $input->{session}, ip => $input->{ip}});
+ # throw exception when there's no session
+   NoUser->throw("User is not logged in or does not exist") unless defined $session;
+ # get client's row
+   my $client = $session->Client;
+ # strip microseconds part
+   $client->filter_timestamp;
+ # throw exception if client is blocked
+   BlkUser->throw   if $client->state eq 'blocked';
+ # set expire date
+   $session->expire(\"now() + interval '2 day'");
+ # update session
+   $session->update;
+ # get usd client's balance from client_balance
+   my $usd_balance = $client->refClientBalance(currency => "USD");
  
 To use SQL 
 
- use SQL::Struct qw($conn);
+ use DBIx::Struct qw($conn);
  # ... 
  my $name;
  $conn->run(sub {

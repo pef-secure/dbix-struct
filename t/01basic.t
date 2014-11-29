@@ -1,10 +1,10 @@
 use lib qw'../lib lib t';
 use TestConnector;
-use SQL::Struct (connector => 'TestConnector');
+use DBIx::Struct (connector => 'TestConnector');
 use Test::More;
 
 my ($query, $bind);
-ok(defined SQL::Struct::connect('', '', ''), 'connected');
+ok(defined DBIx::Struct::connect('', '', ''), 'connected');
 one_row("prim", 1);
 ($query, $bind) = TestConnector::query();
 ok($query eq 'select * from prim where id = ?' && $bind eq "'1'",
@@ -54,7 +54,8 @@ ok($query eq 'delete from list  WHERE ( id = ? )' && $bind eq "'1'",
 	'table delete');
 new_row("list", ref => 44);
 ($query, $bind) = TestConnector::query();
-ok($query eq 'insert into list (ref) values (?) returning id' && $bind eq "'44'",
+ok($query eq 'insert into list (ref) values (?) returning id'
+	  && $bind eq "'44'",
 	'table insert');
 #print "query: $query\nbind: $bind\n";
 done_testing();

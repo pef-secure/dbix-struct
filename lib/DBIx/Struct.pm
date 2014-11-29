@@ -1,27 +1,49 @@
-package SQL::Struct::Connector;
+package DBIx::Struct::Connector;
 use strict;
 use warnings;
 use base 'DBIx::Connector';
 
+our $db_reconnect_timeout = 30;
+
 sub _connect {
 	my ($self, @args) = @_;
-	for (1 .. 30) {
+	for my $try (1 .. $db_reconnect_timeout) {
 		my $dbh = eval { $self->SUPER::_connect(@args) };
 		return $dbh if $dbh;
-		sleep 1;
+		sleep 1 if $try ne $db_reconnect_timeout;
 	}
 	die $@ if $@;
-	die "no connect";
+	die "DB connect error";
 }
 
-package SQL::Struct;
+package DBIx::Struct::Error::String;
 use strict;
 use warnings;
 use Carp;
+
+sub error_message (+%) {
+	my $msg = $_[0];
+	delete $msg->{result};
+	my $message = delete $msg->{message};
+	croak join "; ", $message, map { "$_: $msg->{$_}" } keys %$msg;
+}
+
+package DBIx::Struct::Error::Hash;
+use strict;
+use warnings;
+
+sub error_message (+%) {
+	die $_[0];
+}
+
+package DBIx::Struct;
+use strict;
+use warnings;
 use SQL::Abstract;
 use Digest::MD5;
 use Data::Dumper;
 use base 'Exporter';
+use v5.10;
 
 our $VERSION = '0.01';
 
@@ -37,11 +59,16 @@ our @EXPORT_OK = qw{
 
 our $conn;
 our $update_on_destroy     = 1;
-our $connector_module      = 'SQL::Struct::Connector';
+our $connector_module      = 'DBIx::Struct::Connector';
 our $connector_constructor = 'new';
 our $connector_args        = [];
 our $connector_driver;
+our $table_classes_namespace = 'DBC';
+our $query_classes_namespace = 'DBQ';
+our $error_message_class     = 'DBIx::Struct::Error::String';
 our %driver_pk_insert;
+
+sub error_message (+%);
 
 %driver_pk_insert = (
 	Pg => sub {
@@ -57,7 +84,7 @@ our %driver_pk_insert;
 								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
 |
 		  ) . qq|
-						or croak {
+						or error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' inserting into table $table'
 						};
@@ -68,7 +95,7 @@ our %driver_pk_insert;
 		qq|
 						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
 								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
-						or croak {
+						or error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' inserting into table $table'
 						};
@@ -91,28 +118,48 @@ sub check_package_scalar {
 }
 
 sub import {
+	my ($class, @args) = @_;
+	state $initialized = 0;
 	my $defconn = 0;
-	for (my $i = 1 ; $i < @_ ; ++$i) {
-		if ($_[$i] eq 'connector') {
-			(undef, $connector_module) = splice @_, $i, 2;
+	for (my $i = 0 ; $i < @args ; ++$i) {
+		if ($args[$i] eq 'connector') {
+			(undef, $connector_module) = splice @args, $i, 2;
 			--$i;
 			if (not $defconn and check_package_scalar($connector_module, 'conn')) {
 				*conn = \${$connector_module . '::conn'};
 			}
-		} elsif ($_[$i] eq 'constructor') {
-			(undef, $connector_constructor) = splice @_, $i, 2;
+		} elsif ($args[$i] eq 'constructor') {
+			(undef, $connector_constructor) = splice @args, $i, 2;
 			--$i;
-		} elsif ($_[$i] eq 'args') {
-			(undef, $connector_args) = splice @_, $i, 2;
+		} elsif ($args[$i] eq 'table_classes_namespace') {
+			(undef, $table_classes_namespace) = splice @args, $i, 2;
 			--$i;
-		} elsif ($_[$i] eq 'connector_object') {
+		} elsif ($args[$i] eq 'query_classes_namespace') {
+			(undef, $query_classes_namespace) = splice @args, $i, 2;
+			--$i;
+		} elsif ($args[$i] eq 'connect_timeout') {
+			(undef, $db_reconnect_timeout) = splice @args, $i, 2;
+			--$i;
+		} elsif ($args[$i] eq 'error_class' && !$initialized) {
+			my (undef, $error_message_class) = splice @args, $i, 2;
+			--$i;
+		} elsif ($args[$i] eq 'args') {
+			(undef, $connector_args) = splice @args, $i, 2;
+			--$i;
+		} elsif ($args[$i] eq 'connector_object') {
 			$defconn = 1;
-			my (undef, $connector_object) = splice @_, $i, 2;
+			my (undef, $connector_object) = splice @args, $i, 2;
 			--$i;
 			*conn = \${$connector_object};
 		}
 	}
-	$_[0]->export_to_level(1, @_);
+	if (!$initialized) {
+		my $eval = "*error_message = \\&$error_message_class" . "::error_message";
+		eval $eval;
+	}
+	my %imps = map { $_ => undef } @args, @EXPORT;
+	$class->export_to_level(1, $class, keys %imps);
+	$initialized = 1;
 }
 
 sub _connected {
@@ -129,7 +176,7 @@ sub _not_yet_connected {
 			AutoCommit          => 1,
 			PrintError          => 0,
 			AutoInactiveDestroy => 1,
-			RaiseError          => 1,
+			RaiseError          => 0,
 		};
 		if ($dsn) {
 			my ($driver) = $dsn =~ /^dbi:([^:]+):/;
@@ -145,9 +192,9 @@ sub _not_yet_connected {
 			@$connector_args = ($dsn, $user, $password, $connect_attrs);
 		}
 		$conn = $connector_module->$connector_constructor(@$connector_args)
-		  or croak {
-			answer => "SQL_connect error",
-			result => 'SQLERR',
+		  or error_message {
+			message => "DB connect error",
+			result  => 'SQLERR',
 		  };
 		$conn->mode('fixup');
 	}
@@ -167,13 +214,14 @@ sub connect {
 
 	sub make_name {
 		my ($table) = @_;
-		my $one_table = (index ($table, " ") == -1);
+		my $simple_table = (index ($table, " ") == -1);
 		my $ncn;
-		if ($one_table) {
-			$ncn = "DBC::" . join ('', map { ucfirst ($_) } split (/[^a-zA-Z0-9]/, $table));
+		if ($simple_table) {
+			$ncn = $table_classes_namespace . "::"
+			  . join ('', map { ucfirst ($_) } split (/[^a-zA-Z0-9]/, $table));
 		} else {
 			$md5->add($table);
-			$ncn = "DBQ::" . "G" . $md5->hexdigest;
+			$ncn = $query_classes_namespace . "::" . "G" . $md5->hexdigest;
 			$md5->reset;
 		}
 		$ncn;
@@ -198,7 +246,7 @@ sub _row_data ()    { 0 }
 sub _row_updates () { 1 }
 
 sub setup_row {
-	croak {
+	error_message {
 		result  => 'SQLERR',
 		message => "Unsupported driver $connector_driver",
 	  }
@@ -220,7 +268,7 @@ sub setup_row {
 		$conn->run(
 			sub {
 				my $cih = $_->column_info(undef, undef, $table, undef);
-				croak {
+				error_message {
 					result  => 'SQLERR',
 					message => "Unknown table $table",
 				  }
@@ -306,41 +354,38 @@ sub setup_row {
 		}
 	}
 	my $foreign_tables = '';
-	if (@fkeys) {
-		for my $fk (@fkeys) {
-			$fk->{FK_COLUMN_NAME} =~ s/"//g;
-			my $fn = $fk->{FK_COLUMN_NAME};
-			$fn =~ s/^id_// or $fn =~ s/_id(?=[^a-z]|$)//;
-			$fn =~ tr/_/-/;
-			$fn =~ s/\b(\w)/\u$1/g;
-			$fn =~ tr/-//d;
-			(my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
-			(my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
-			$foreign_tables .= qq|
+	for my $fk (@fkeys) {
+		$fk->{FK_COLUMN_NAME} =~ s/"//g;
+		my $fn = $fk->{FK_COLUMN_NAME};
+		$fn =~ s/^id_// or $fn =~ s/_id(?=[^a-z]|$)//;
+		$fn =~ tr/_/-/;
+		$fn =~ s/\b(\w)/\u$1/g;
+		$fn =~ tr/-//d;
+		(my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
+		(my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
+		$foreign_tables .= qq|
 		sub $fn { 
-			if(defined(\$_[0]->$fk->{FK_COLUMN_NAME})) { return SQL::Struct::one_row("$pt", {$pk => \$_[0]->$fk->{FK_COLUMN_NAME}}) } 
+			if(defined(\$_[0]->$fk->{FK_COLUMN_NAME})) { return DBIx::Struct::one_row("$pt", {$pk => \$_[0]->$fk->{FK_COLUMN_NAME}}) } 
 			else { return } 
 		}\n|;
-		}
 	}
 	my $references_tables = '';
-	if (@refkeys) {
-		for my $rk (@refkeys) {
-			$rk->{FK_TABLE_NAME} =~ s/"//g;
-			my $ft = $rk->{FK_TABLE_NAME};
-			(my $fk = $rk->{FK_COLUMN_NAME}) =~ s/"//g;
-			(my $pt = $rk->{PKTABLE_NAME} || $rk->{UK_TABLE_NAME}) =~ s/"//g;
-			(my $pk = $rk->{PKCOLUMN_NAME} || $rk->{UK_COLUMN_NAME}) =~ s/"//g;
-			if ($pk ne $fk) {
-				my $fn = $fk;
-				$fn =~ s/^id_// or $fn =~ s/_id(?=[^a-z]|$)//;
-				$fn =~ s/$ft//;
-				$ft .= "_$fn" if $fn;
-			}
-			$ft =~ tr/_/-/;
-			$ft =~ s/\b(\w)/\u$1/g;
-			$ft =~ tr/-//d;
-			$references_tables .= qq|
+	for my $rk (@refkeys) {
+		$rk->{FK_TABLE_NAME} =~ s/"//g;
+		my $ft = $rk->{FK_TABLE_NAME};
+		(my $fk = $rk->{FK_COLUMN_NAME}) =~ s/"//g;
+		(my $pt = $rk->{PKTABLE_NAME} || $rk->{UK_TABLE_NAME}) =~ s/"//g;
+		(my $pk = $rk->{PKCOLUMN_NAME} || $rk->{UK_COLUMN_NAME}) =~ s/"//g;
+		if ($pk ne $fk) {
+			my $fn = $fk;
+			$fn =~ s/^id_// or $fn =~ s/_id(?=[^a-z]|$)//;
+			$fn =~ s/$ft//;
+			$ft .= "_$fn" if $fn;
+		}
+		$ft =~ tr/_/-/;
+		$ft =~ s/\b(\w)/\u$1/g;
+		$ft =~ tr/-//d;
+		$references_tables .= qq|
 		sub ref${ft}s {
 			my (\$self, \@cond) = \@_;
 			my \%cond;
@@ -352,7 +397,7 @@ sub setup_row {
 				}
 			}
 			\$cond{$fk} = \$self->$pk;
-			return SQL::Struct::all_rows("$rk->{FK_TABLE_NAME}", \\\%cond);
+			return DBIx::Struct::all_rows("$rk->{FK_TABLE_NAME}", \\\%cond);
 		}
 		sub ref${ft} {
 			my (\$self, \@cond) = \@_;
@@ -365,10 +410,9 @@ sub setup_row {
 				}
 			}
 			\$cond{$fk} = \$self->$pk;
-			return SQL::Struct::one_row("$rk->{FK_TABLE_NAME}", \\\%cond);
+			return DBIx::Struct::one_row("$rk->{FK_TABLE_NAME}", \\\%cond);
 		}
 |;
-		}
 	}
 	my $accessors = '';
 	for my $k (keys %fields) {
@@ -414,7 +458,7 @@ sub setup_row {
 				}\n| . (
 		$required
 		? qq|\t\t\t\tfor my \$r ($required) {
-					croak {
+					error_message {
 						result  => 'SQLERR',
 						message => "required field \$r is absent for table $table"
 					} if not exists \$insert{\$r};
@@ -424,7 +468,7 @@ sub setup_row {
 	  . (
 		(not ref $table)
 		? qq|
-				\$SQL::Struct::conn->run(
+				\$DBIx::Struct::conn->run(
 					sub {\n| . $driver_pk_insert{$connector_driver}->($table, $pk_bind, $pk_return)
 		: ''
 	  )
@@ -506,9 +550,9 @@ sub setup_row {
 					}
 					(\$where, \@bind_where) = SQL::Abstract->new->where(\$cond);
 				}
-				\$SQL::Struct::conn->run(sub {
+				\$DBIx::Struct::conn->run(sub {
 					\$_->do(qq{update $table set \$set \$where}, undef, \@bind, \@bind_where)
-					or croak {
+					or error_message {
 						result  => 'SQLERR',
 						message => 'error '.\$_->errstr.' updating table $table'
 					}
@@ -518,14 +562,14 @@ sub setup_row {
 					map { ref(\$self->[@{[_row_data]}]->[\$fields{\$_}]) eq 'SCALAR'
 							? "\$_ = " . \${\$self->[@{[_row_data]}]->[\$fields{\$_}]}
 							: "\$_ = ?" } keys \%{\$self->[@{[_row_updates]}]});
-				\$SQL::Struct::conn->run(
+				\$DBIx::Struct::conn->run(
 					sub {
 						\$_->do(qq{update $table set \$set where $pk_where}, undef, (
 							map {\$self->[@{[_row_data]}]->[\$fields{\$_}]}
 							grep {ref(\$self->[@{[_row_data]}]->[\$fields{\$_}]) ne 'SCALAR'}
 							keys \%{\$self->[@{[_row_updates]}]}
 							), $pk_bind)
-						or croak {
+						or error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' updating table $table'
 						}
@@ -548,18 +592,18 @@ sub setup_row {
 					\$cond = {(selectKeys)[0] => \$_[1]};
 				}
 				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
-				\$SQL::Struct::conn->run(sub {
+				\$DBIx::Struct::conn->run(sub {
 					\$_->do(qq{delete from $table \$where}, undef, \@bind)
-					or croak {
+					or error_message {
 						result  => 'SQLERR',
 						message => 'error '.\$_->errstr.' updating table $table'
 					}
 				});
 			} else {
-				\$SQL::Struct::conn->run(
+				\$DBIx::Struct::conn->run(
 					sub {
 						\$_->do(qq{delete from $table where $pk_where}, undef, $pk_bind)
-						or croak {
+						or error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' updating table $table'
 						}
@@ -580,18 +624,18 @@ sub setup_row {
 					\$cond = {(selectKeys)[0] => \$_[1]};
 				}
 				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
-				\$SQL::Struct::conn->run(sub {
+				\$DBIx::Struct::conn->run(sub {
 					\@{\$self->[@{[_row_data]}]} = \$_->selectrow_array(qq{select * from $table \$where}, undef, \@bind)
-					or croak {
+					or error_message {
 						result  => 'SQLERR',
 						message => 'error '.\$_->errstr.' fetching table $table'
 					}
 				});
 			} else {
-				\$SQL::Struct::conn->run(
+				\$DBIx::Struct::conn->run(
 					sub {
 						\@{\$self->[@{[_row_data]}]} = \$_->selectrow_array(qq{select *  from $table where $pk_where}, undef, $pk_bind)
-						or croak {
+						or error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' fetching table $table'
 						}
@@ -604,7 +648,7 @@ sub setup_row {
 	my $destroy;
 	if (not ref $table) {
 		$destroy =
-		  qq|\t\tsub DESTROY {\n\t\t\tno warnings 'once';\n\t\t\t\$_[0]->update if \$SQL::Struct::update_on_destroy;\n\t\t}\n|;
+		  qq|\t\tsub DESTROY {\n\t\t\tno warnings 'once';\n\t\t\t\$_[0]->update if \$DBIx::Struct::update_on_destroy;\n\t\t}\n|;
 	} else {
 		$destroy = '';
 	}
@@ -612,7 +656,7 @@ sub setup_row {
 	  $filter_timestamp, $set, $data, $fetch,
 	  $update, $delete, $destroy, $accessors, $foreign_tables,
 	  $references_tables;
-	#print $eval_code;
+	#	print $eval_code;
 	eval $eval_code;
 	return $ncn;
 }
@@ -666,13 +710,13 @@ sub setup_row {
 		$offset     ||= $up_offset;
 		my $where;
 		my @bind;
-		my $one_table = (index ($table, " ") == -1);
+		my $simple_table = (index ($table, " ") == -1);
 		my $ncn = make_name($table);
-		if ($one_table) {
+		if ($simple_table) {
 			setup_row($table);
 			if (defined ($conditions) && !ref ($conditions)) {
 				my $id = ($ncn->selectKeys())[0]
-				  or croak {
+				  or error_message {
 					result  => 'SQLERR',
 					message => "unknown primary key",
 					query   => "select * from $table",
@@ -698,7 +742,7 @@ sub setup_row {
 			$where .= " offset $offset" if $offset;
 		}
 		my $query;
-		if ($one_table) {
+		if ($simple_table) {
 			$query = qq{select * from $table $where};
 		} else {
 			$query = qq{$table $where};
@@ -707,13 +751,13 @@ sub setup_row {
 		return $conn->run(
 			sub {
 				$sth = $_->prepare($query)
-				  or croak {
+				  or error_message {
 					result  => 'SQLERR',
 					message => $conn->dbh->errstr,
 					query   => $query,
 				  };
 				$sth->execute(@bind)
-				  or croak {
+				  or error_message {
 					result     => 'SQLERR',
 					message    => $conn->dbh->errstr,
 					query      => $query,
@@ -769,12 +813,12 @@ sub all_rows {
 
 sub new_row {
 	my ($table, @data) = @_;
-	my $one_table = (index ($table, " ") == -1);
-	croak {
+	my $simple_table = (index ($table, " ") == -1);
+	error_message {
 		result  => 'SQLERR',
-		message => "new row cant work for multiple tables"
+		message => "insert row can't work for queries"
 	  }
-	  if !$one_table;
+	  unless $simple_table;
 	my $ncn = setup_row($table);
 	return $ncn->new(@data);
 }
