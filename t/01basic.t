@@ -57,5 +57,7 @@ new_row("list", ref => 44);
 ok($query eq 'insert into list (ref) values (?) returning id'
 	  && $bind eq "'44'",
 	'table insert');
-#print "query: $query\nbind: $bind\n";
+my $count = one_row("select count(*) from list");
+($query, $bind) = TestConnector::query();
+print "query: $query\nbind: $bind\n";
 done_testing();

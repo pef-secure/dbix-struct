@@ -126,6 +126,7 @@ sub import {
 			(undef, $connector_module) = splice @args, $i, 2;
 			--$i;
 			if (not $defconn and check_package_scalar($connector_module, 'conn')) {
+				no strict 'refs';
 				*conn = \${$connector_module . '::conn'};
 			}
 		} elsif ($args[$i] eq 'constructor') {
@@ -442,41 +443,49 @@ sub setup_row {
 		use SQL::Abstract;
 		our \%fields = ($fields);\n|;
 	$package_header .= qq|\t\tour \$table_name = "$table";\n| if not ref $table;
-	my $new = qq|
+	my $new = <<NEW;
 		sub new {
 			my \$class = \$_[0];
 			my \$self = [ [] ];
 			if(defined(\$_[1]) && ref(\$_[1]) eq 'ARRAY') {
 				\$self->[@{[_row_data]}] = \$_[1];
-			} elsif(defined \$_[1]) {
+			}
+NEW
+	if (not ref $table) {
+		$new .= <<NEW;
+			 elsif(defined \$_[1]) {
 				my \%insert;
 				for(my \$i = 1; \$i < \@_; \$i += 2) {
 					if (exists \$fields{\$_[\$i]}) {
 						\$self->[@{[_row_data]}]->[\$fields{\$_[\$i]}] = \$_[\$i + 1];
 						\$insert{\$_[\$i]} = \$_[\$i + 1];
 					}
-				}\n| . (
-		$required
-		? qq|\t\t\t\tfor my \$r ($required) {
+				}
+NEW
+		if ($required) {
+			$new .= <<NEW;
+				for my \$r ($required) {
 					error_message {
 						result  => 'SQLERR',
 						message => "required field \$r is absent for table $table"
 					} if not exists \$insert{\$r};
-				}\n|
-		: ''
-	  )
-	  . (
-		(not ref $table)
-		? qq|
-				\$DBIx::Struct::conn->run(
-					sub {\n| . $driver_pk_insert{$connector_driver}->($table, $pk_bind, $pk_return)
-		: ''
-	  )
-	  . qq|
-	  				});
 				}
-	  			return bless \$self, \$class;
-		}\n|;
+NEW
+		}
+		$new .= <<NEW;
+				\$DBIx::Struct::conn->run(
+					sub {
+NEW
+		$new .= $driver_pk_insert{$connector_driver}->($table, $pk_bind, $pk_return);
+		$new .= <<NEW;
+	  			});
+			}
+NEW
+	}
+	$new .= <<NEW;
+	  		return bless \$self, \$class;
+		}
+NEW
 	my $filter_timestamp = qq|\t\tsub filter_timestamp {
 			my \$self = \$_[0];
 			if(\@_ == 1) {
@@ -656,7 +665,7 @@ sub setup_row {
 	  $filter_timestamp, $set, $data, $fetch,
 	  $update, $delete, $destroy, $accessors, $foreign_tables,
 	  $references_tables;
-	#	print $eval_code;
+	print $eval_code;
 	eval $eval_code;
 	return $ncn;
 }
@@ -759,7 +768,7 @@ sub setup_row {
 				$sth->execute(@bind)
 				  or error_message {
 					result     => 'SQLERR',
-					message    => $conn->dbh->errstr,
+					message    => $_->errstr,
 					query      => $query,
 					bind       => Dumper(\@bind),
 					conditions => Dumper($conditions),

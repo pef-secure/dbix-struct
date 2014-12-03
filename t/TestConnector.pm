@@ -7,6 +7,11 @@ sub new {
 		data_info => $data_info || [],
 		data      => $data || [],
 	};
+	$self->{NAME} = $self->{data_info};
+	for (my $i = 0 ; $i < @$data_info ; ++$i) {
+		$self->{NAME_hash}{$data_info->[$i]} = $i;
+	}
+	$self->{TYPE} = [0 x @$data_info];
 	bless $self, $class;
 }
 
@@ -330,8 +335,8 @@ sub mode {
 sub driver { {driver => 'Pg'} }
 
 sub query {
-		print "query: $sql_query\n";
-		print "bind: $sql_bind\n";
+	print "query: $sql_query\n";
+	print "bind: $sql_bind\n";
 	return ($sql_query, $sql_bind);
 }
 
