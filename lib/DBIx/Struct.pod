@@ -30,6 +30,54 @@ easy, simple and efficient interface to database. Internally every row is just
 an array of values and every accessor knows its offset in that array. This is 
 much more efficient as storing row in hash.
 
+=head2 IMPORT
+
+This module can be integrated into some framework that already uses
+L<DBIx::Connector>. Integration parameters should be passed on first use.
+These parameters are used for integration:
+
+=over
+
+=item connector
+
+ Connector's module name. By default used its own connector.
+
+=item constructor
+
+ Connector's constructor function name. By default is 'new'.
+
+=item args
+
+ Connector's arguments: ($dsn, $user, $password, $connect_attrs)
+
+=item connector_object
+
+ Connector's singleton object. By defaut used its own object.
+
+=item table_classes_namespace
+
+ Namespace for table classes. By default is 'DBC'.
+
+=item query_classes_namespace
+
+ Namespace for query classes. By default is 'DBQ'.
+
+=item connect_timeout
+
+ Timeout to connect or reconnect to DB for default connector.
+
+=item error_class
+
+ Errors can be reported as strings or as hashes. By default errors 
+ reported as strings. To report error as string 'DBIx::Struct::Error::String'
+ is used. There's 'DBIx::Struct::Error::Hash' to receive a structured hash containg
+ keys:
+   result  => 'SQLERR',
+   message => $message
+ and probably some others.
+
+=back
+
 =head3 C<connect($data_source, $username, $auth)>
 
 This method connects to database or returns already connected connector object.
@@ -146,7 +194,25 @@ Sets values of table columns. Has three forms:
 =back
 
 This method is useful when you can't use accessors. For example, when you 
-have column name 'new' in your table.
+have column name 'new' in your table. Full list of reserved keywords:
+
+=over
+
+=item new
+
+=item set
+
+=item data
+
+=item delete
+
+=item fetch
+
+=item update
+
+=item filter_timestamp
+
+=back
 
 =head3 C<data>
 
@@ -162,7 +228,7 @@ Returns values of the row. Has four forms:
 
  Empty array reference means internal row data.
  
-=item C<data([qw|column columnt2|])>
+=item C<data([qw|column column2|])>
 
  Non-empty array means array of values for corresponding columns.
  
@@ -246,6 +312,12 @@ call $prim->update. By default update is called on row object destruction.
 To include a random snippet of SQL verbatim, you specify it as a scalar reference.
 
  $client->bonus(\"bonus + 10");
+ 
+Or with parameters:
+
+ $client->bonus([\"bonus + ?", 10]);
+ 
+This literal SQL expressions can be used for insert values also.
 
 =head2 Syntax sugar
 

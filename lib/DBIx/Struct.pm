@@ -71,42 +71,63 @@ our %driver_pk_insert;
 sub error_message (+%);
 
 %driver_pk_insert = (
-	Pg => sub {
-		my ($table, $pk_bind, $pk_return) = @_;
-		(   $pk_bind
-			? qq|
-						($pk_bind) =
-							\$_->selectrow_array('insert into $table (' . join (", ", keys \%insert) . ") values ("
-								. join(",", ('?') x scalar(keys \%insert) ) . ") $pk_return", undef, values \%insert)
-|
-			: qq|
-						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
-								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
-|
-		  ) . qq|
-						or error_message {
+	_returning => sub {
+		my ($table, $pk_row_data, $pk_returninig) = @_;
+		my $ret;
+		if ($pk_row_data) {
+			$ret = <<INS;
+						($pk_row_data) =
+							\$_->selectrow_array(\$insert . " $pk_returninig", undef, \@bind)
+INS
+		} else {
+			$ret = <<INS;
+						\$_->do(\$insert, undef, \@bind)
+INS
+		}
+		$ret .= <<INS
+						or DBIx::Struct::error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' inserting into table $table'
 						};
-|;
+INS
 	},
-	mysql => sub {
-		my ($table, $pk_bind, $pk_return) = @_;
-		qq|
-						\$_->do('insert into $table (' . join (", ", keys \%insert) . ") values ("
-								. join(",", ('?') x scalar(keys \%insert) ) . ")", undef, values \%insert)
-						or error_message {
+	_last_id_undef => sub {
+		my ($table, $insert_exp, $pk_row_data) = @_;
+		my $ret;
+		$ret = <<INS;
+						\$_->do(\$insert, undef, \@bind)
+						or DBIx::Struct::error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' inserting into table $table'
 						};
-|
-		  . (
-			$pk_bind
-			? qq|\t\t\t\t\t\t$pk_bind = $_->last_insert_id(undef, undef, undef, undef);\n|
-			: ''
-		  );
+INS
+		if ($pk_row_data) {
+			$ret .= <<INS;
+						$pk_row_data = $_->last_insert_id(undef, undef, undef, undef);
+INS
+		}
+	},
+	_last_id_empty => sub {
+		my ($table, $insert_exp, $pk_row_data) = @_;
+		my $ret;
+		$ret = <<INS;
+						\$_->do(\$insert, undef, \@bind)
+						or DBIx::Struct::error_message {
+							result  => 'SQLERR',
+							message => 'error '.\$_->errstr.' inserting into table $table'
+						};
+INS
+		if ($pk_row_data) {
+			$ret .= <<INS;
+						$pk_row_data = $_->last_insert_id("", "", "", "");
+INS
+		}
 	}
 );
+
+$driver_pk_insert{Pg}     = $driver_pk_insert{_returning};
+$driver_pk_insert{mysql}  = $driver_pk_insert{_last_id_undef};
+$driver_pk_insert{SQLite} = $driver_pk_insert{_last_id_empty};
 
 sub check_package_scalar {
 	my ($package, $scalar) = @_;
@@ -246,6 +267,327 @@ sub populate {
 sub _row_data ()    { 0 }
 sub _row_updates () { 1 }
 
+sub make_object_new {
+	my ($table, $required, $pk_row_data, $pk_returninig) = @_;
+	my $new = <<NEW;
+		sub new {
+			my \$class = \$_[0];
+			my \$self = [ [] ];
+			if(CORE::defined(\$_[1]) && ref(\$_[1]) eq 'ARRAY') {
+				\$self->[@{[_row_data]}] = \$_[1];
+			}
+NEW
+	if (not ref $table) {
+		$new .= <<NEW;
+			 elsif(CORE::defined \$_[1]) {
+				my \%insert;
+				for(my \$i = 1; \$i < \@_; \$i += 2) {
+					if (CORE::exists \$fields{\$_[\$i]}) {
+						\$self->[@{[_row_data]}]->[\$fields{\$_[\$i]}] = \$_[\$i + 1];
+						\$insert{\$_[\$i]} = \$_[\$i + 1];
+					} else {
+						DBIx::Struct::error_message {
+							result  => 'SQLERR',
+							message => "unknown column \$_[\$i] inserting into table $table"
+						}
+					}
+				}
+				my (\@insert, \@values, \@bind);
+				\@insert =
+					CORE::map { 
+						if(CORE::ref(\$insert{\$_}) eq 'ARRAY' and CORE::ref(\$insert{\$_}[0]) eq 'SCALAR') {
+							CORE::push \@bind, \@{\$insert{\$_}}[1..\$#{\$insert{\$_}}];
+							CORE::push \@values, \${\$insert{\$_}[0]};
+							"\$_";
+						} elsif(CORE::ref(\$insert{\$_}) eq 'SCALAR') {
+							CORE::push \@values, \${\$insert{\$_}};
+							"\$_";
+						} else {
+							CORE::push \@bind, \$insert{\$_};
+							CORE::push \@values, "?";
+							"\$_" 
+						}						
+					} keys \%insert;
+				my \$insert = "insert into $table (" . CORE::join( ", ", \@insert) . ") values ("
+					.  CORE::join( ", ", \@values) . ")";
+NEW
+		if ($required) {
+			$new .= <<NEW;
+				for my \$r ($required) {
+					DBIx::Struct::error_message {
+						result  => 'SQLERR',
+						message => "required field \$r is absent for table $table"
+					} if not CORE::exists \$insert{\$r};
+				}
+NEW
+		}
+		$new .= <<NEW;
+				DBIx::Struct::connect->run(
+					sub {
+NEW
+		$new .=
+		  $driver_pk_insert{$connector_driver}->($table, $pk_row_data, $pk_returninig);
+		$new .= <<NEW;
+	  			});
+			}
+NEW
+	}
+	$new .= <<NEW;
+	  		bless \$self, \$class;
+		}
+NEW
+	$new;
+}
+
+sub make_object_filter_timestamp {
+	my ($timestamps) = @_;
+	my $filter_timestamp = <<FTS;
+		sub filter_timestamp {
+			my \$self = \$_[0];
+			if(\@_ == 1) {
+				for my \$f ($timestamps) {
+					\$self->[@{[_row_data]}][\$fields{\$f}] =~ s/\\.\\d+\$// if \$self->[@{[_row_data]}][\$fields{\$f}];
+				}
+			} else {
+				for my \$f (\@_[1..\$#_]) {
+					\$self->[@{[_row_data]}][\$fields{\$f}] =~ s/\\.\\d+\$// if \$self->[@{[_row_data]}][\$fields{\$f}];
+				}
+			}
+			\$self;
+		}
+FTS
+	$filter_timestamp;
+}
+
+sub make_object_set {
+	my $set = <<SET;
+		sub set {
+			my \$self = \$_[0];
+			if(CORE::defined(\$_[1])) {
+				if(ref(\$_[1]) eq 'ARRAY') {
+					\$self->[@{[_row_data]}] = \$_[1];
+					\$self->[@{[_row_updates]}] = {};
+				} elsif(ref(\$_[1]) eq 'HASH') {
+					for my \$f (keys \%{\$_[1]}) {
+						if (CORE::exists \$fields{\$_[\$f]}) {
+							\$self->[@{[_row_data]}]->[\$fields{\$f}] = \$_[1]->{\$f};
+							\$self->[@{[_row_updates]}]{\$f} = undef;
+						}
+					}
+				} elsif(not ref(\$_[1])) {
+					for(my \$i = 1; \$i < \@_; \$i += 2) {
+						if (CORE::exists \$fields{\$_[\$i]}) {
+							\$self->[@{[_row_data]}]->[\$fields{\$_[\$i]}] = \$_[\$i + 1];
+							\$self->[@{[_row_updates]}]{\$_[\$i]} = undef;
+						}
+					}
+				}
+			}
+			\$self;
+		}
+SET
+	$set;
+}
+
+sub make_object_data {
+	my $data = <<DATA;
+		sub data {
+			my \$self = \$_[0];
+			my \@ret_keys;
+			my \$ret;
+			if(CORE::defined(\$_[1])) {
+				if(CORE::ref(\$_[1]) eq 'ARRAY') {
+					if(!\@{\$_[1]}) {
+						\$ret = \$self->[@{[_row_data]}];
+					} else {
+						\$ret = [CORE::map {\$self->[@{[_row_data]}]->[\$fields{\$_}] } CORE::grep {CORE::exists \$fields{\$_}} \@{\$_[1]}];
+					}
+				} else {
+					for my \$k (\@_[1..\$#_]) {
+						CORE::push \@ret_keys, \$k if CORE::exists \$fields{\$k};
+					}
+				}
+			} else {
+				\@ret_keys = keys \%fields;
+			}
+			\$ret = { CORE::map {\$_ => \$self->[@{[_row_data]}]->[\$fields{\$_}] } \@ret_keys} if not CORE::defined \$ret;
+			\$ret;
+		}
+DATA
+	$data;
+}
+
+sub make_object_update {
+	my ($table, $pk_where, $pk_row_data) = @_;
+	my $update;
+	if (not ref $table) {
+		# means this is just one simple table
+		$update = <<UPD;
+		sub update {
+			my \$self = \$_[0];
+			if(\@_ > 1 && ref(\$_[1]) eq 'HASH') {
+				my (\$set, \$where, \@bind, \@bind_where);
+				{
+					no strict 'vars';
+					local *set_hash = \$_[1];
+					my \@unknown_columns = CORE::grep {not CORE::exists \$fields{\$_}} keys %set_hash;
+					DBIx::Struct::error_message {
+							result  => 'SQLERR',
+							message => 'unknown columns '.CORE::join(", ", \@unknown_columns).' updating table $table'
+					} if \@unknown_columns;
+					\$set = 
+						CORE::join ", ", 
+						CORE::map { 
+							if(CORE::ref(\$set_hash{\$_}) eq 'ARRAY' and CORE::ref(\$set_hash{\$_}[0]) eq 'SCALAR') {
+								CORE::push \@bind, \@{\$set_hash{\$_}}[1..\$#{\$set_hash{\$_}}];
+								"\$_ = " . \${\$set_hash{\$_}[0]};
+							} elsif(CORE::ref(\$set_hash{\$_}) eq 'SCALAR') {
+								"\$_ = " . \${\$set_hash{\$_}};
+							} else {
+								CORE::push \@bind, \$set_hash{\$_};
+								"\$_ = ?" 
+							}						
+						} keys \%set_hash;
+				}
+				if(\@_ > 2) {
+					my \$cond = \$_[2];
+					if(not CORE::ref(\$cond)) {
+						\$cond = {(selectKeys)[0] => \$_[2]};
+					}
+					(\$where, \@bind_where) = SQL::Abstract->new->where(\$cond);
+				}
+				DBIx::Struct::connect->run(sub {
+					\$_->do(qq{update $table set \$set \$where}, undef, \@bind, \@bind_where)
+					or DBIx::Struct::error_message {
+						result  => 'SQLERR',
+						message => 'error '.\$_->errstr.' updating table $table'
+					}
+				});
+			} elsif (\@\$self > 1 && \%{\$self->[@{[_row_updates]}]}) {
+				my (\$set, \@bind);
+				{
+					no strict 'vars';
+					\$set = 
+						CORE::join ", ", 
+						CORE::map { 
+							local *column_value = \\\$self->[@{[_row_data]}][\$fields{\$_}];
+							if(CORE::ref(\$column_value) eq 'ARRAY' and CORE::ref(\$column_value->[0]) eq 'SCALAR') {
+								CORE::push \@bind, \@{\$column_value}[1..\$#\$column_value];
+								"\$_ = " . \${\$column_value->[0]};
+							} elsif(CORE::ref(\$column_value) eq 'SCALAR') {
+								"\$_ = " . \$\$column_value;
+							} else {
+								CORE::push \@bind, \$column_value;
+								"\$_ = ?" 
+							}						
+						} keys \%{\$self->[@{[_row_updates]}]};
+				}
+				DBIx::Struct::connect->run(
+					sub {
+						\$_->do(qq{update $table set \$set where $pk_where}, undef, \@bind, $pk_row_data)
+						or DBIx::Struct::error_message {
+							result  => 'SQLERR',
+							message => 'error '.\$_->errstr.' updating table $table'
+						}
+					}
+				);
+				pop \@{\$self};
+			}
+			\$self;
+		}
+UPD
+	} else {
+		$update = <<UPD;
+		sub update {}
+UPD
+	}
+	$update;
+}
+
+sub make_object_delete {
+	my ($table, $pk_where, $pk_row_data) = @_;
+	my $delete;
+	if (not ref $table) {
+		$delete = <<DEL;
+		sub delete {
+			my \$self = \$_[0];
+			if(\@_ > 1) {
+				my (\$where, \@bind);
+				my \$cond = \$_[1];
+				if(not CORE::ref(\$cond)) {
+					\$cond = {(selectKeys)[0] => \$_[1]};
+				}
+				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
+				DBIx::Struct::connect->run(sub {
+					\$_->do(qq{delete from $table \$where}, undef, \@bind)
+					or DBIx::Struct::error_message {
+						result  => 'SQLERR',
+						message => 'error '.\$_->errstr.' updating table $table'
+					}
+				});
+			} else {
+				DBIx::Struct::connect->run(
+					sub {
+						\$_->do(qq{delete from $table where $pk_where}, undef, $pk_row_data)
+						or DBIx::Struct::error_message {
+							result  => 'SQLERR',
+							message => 'error '.\$_->errstr.' updating table $table'
+						}
+					});
+			}
+			\$self;
+		}
+DEL
+	} else {
+		$delete = <<DEL
+		sub delete {}
+DEL
+	}
+	$delete;
+}
+
+sub make_object_fetch {
+	my ($table, $pk_where, $pk_row_data) = @_;
+	my $fetch;
+	if (not ref $table) {
+		$fetch = <<FETCH;
+		sub fetch {
+			my \$self = \$_[0];
+			if(\@_ > 1) {
+				my (\$where, \@bind);
+				my \$cond = \$_[1];
+				if(not ref(\$cond)) {
+					\$cond = {(selectKeys)[0] => \$_[1]};
+				}
+				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
+				DBIx::Struct::connect->run(sub {
+					\@{\$self->[@{[_row_data]}]} = \$_->selectrow_array(qq{select * from $table \$where}, undef, \@bind)
+					or DBIx::Struct::error_message {
+						result  => 'SQLERR',
+						message => 'error '.\$_->errstr.' fetching table $table'
+					}
+				});
+			} else {
+				DBIx::Struct::connect->run(
+					sub {
+						\@{\$self->[@{[_row_data]}]} = \$_->selectrow_array(qq{select *  from $table where $pk_where}, undef, $pk_row_data)
+						or DBIx::Struct::error_message {
+							result  => 'SQLERR',
+							message => 'error '.\$_->errstr.' fetching table $table'
+						}
+					});
+			}
+			\$self;
+		}
+FETCH
+	} else {
+		$fetch = <<FETCH;
+		sub fetch { \$_[0] }
+FETCH
+	}
+	$fetch;
+}
+
 sub setup_row {
 	error_message {
 		result  => 'SQLERR',
@@ -260,12 +602,13 @@ sub setup_row {
 	}
 	my %fields;
 	my @fields;
-	my @timestamps;
+	my @timestamp_fields;
 	my @required;
 	my @pkeys;
 	my @fkeys;
 	my @refkeys;
 	if (not ref $table) {
+		# means this is just one simple table
 		$conn->run(
 			sub {
 				my $cih = $_->column_info(undef, undef, $table, undef);
@@ -279,7 +622,7 @@ sub setup_row {
 					$chr->{COLUMN_NAME} =~ s/"//g;
 					push @fields, $chr->{COLUMN_NAME};
 					if ($chr->{TYPE_NAME} =~ /timestamp/) {
-						push @timestamps, $chr->{COLUMN_NAME};
+						push @timestamp_fields, $chr->{COLUMN_NAME};
 					}
 					if ($chr->{NULLABLE} == 0 && !defined ($chr->{COLUMN_DEF})) {
 						push @required, $chr->{COLUMN_NAME};
@@ -300,12 +643,13 @@ sub setup_row {
 			}
 		);
 	} else {
+		# means this is a query
 		%fields = %{$table->{NAME_hash}};
 		$conn->run(
 			sub {
 				for (my $cn = 0 ; $cn < @{$table->{NAME}} ; ++$cn) {
 					my $ti = $_->type_info($table->{TYPE}->[$cn]);
-					push @timestamps, $table->{NAME}->[$cn]
+					push @timestamp_fields, $table->{NAME}->[$cn]
 					  if $ti && $ti->{TYPE_NAME} =~ /timestamp/;
 				}
 			}
@@ -317,8 +661,8 @@ sub setup_row {
 		$required = join (", ", map { qq|"$_"| } @required);
 	}
 	my $timestamps = '';
-	if (@timestamps) {
-		$timestamps = join (", ", map { qq|"$_"| } @timestamps);
+	if (@timestamp_fields) {
+		$timestamps = join (", ", map { qq|"$_"| } @timestamp_fields);
 	} else {
 		$timestamps = "()";
 	}
@@ -332,26 +676,35 @@ sub setup_row {
 		DESTROY          => undef,
 		filter_timestamp => undef,
 	);
-	my $pk_bind     = '';
-	my $pk_return   = '';
-	my $pk_where    = '';
-	my $select_keys = '';
+	my $pk_row_data   = '';
+	my $pk_returninig = '';
+	my $pk_where      = '';
+	my $select_keys   = '';
 	my %pk_fields;
 	if (@pkeys) {
 		@pk_fields{@pkeys} = undef;
-		$pk_bind =
+		$pk_row_data =
 		  join (", ", map { qq|\$self->[@{[_row_data]}]->[$fields{"$_"}]| } @pkeys);
-		$pk_return = 'returning ' . join (", ", @pkeys);
+		$pk_returninig = 'returning ' . join (", ", @pkeys);
 		$pk_where = join (" and ", map { "$_ = ?" } @pkeys);
-		$select_keys =
-		  "\t\tsub selectKeys () { (" . join (", ", map { qq|"$_"| } @pkeys) . ") }\n";
+		my $sk_list = join (", ", map { qq|"$_"| } @pkeys);
+		$select_keys = <<SK;
+		sub selectKeys () { 
+		 	($sk_list) 
+		}
+SK
 	} else {
 		if (@fields) {
-			$select_keys =
-			  "\t\tsub selectKeys () { return ("
-			  . join (", ", map { qq|"$_"| } @fields) . ") }\n";
+			my $sk_list = join (", ", map { qq|"$_"| } @fields);
+			$select_keys = <<SK;
+		sub selectKeys () { 
+			($sk_list)
+		}
+SK
 		} else {
-			$select_keys = "\t\tsub selectKeys () { () }\n";
+			$select_keys = <<SK;
+		sub selectKeys () { () } 
+SK
 		}
 	}
 	my $foreign_tables = '';
@@ -364,11 +717,15 @@ sub setup_row {
 		$fn =~ tr/-//d;
 		(my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
 		(my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
-		$foreign_tables .= qq|
+		$foreign_tables .= <<FKT;
 		sub $fn { 
-			if(defined(\$_[0]->$fk->{FK_COLUMN_NAME})) { return DBIx::Struct::one_row("$pt", {$pk => \$_[0]->$fk->{FK_COLUMN_NAME}}) } 
-			else { return } 
-		}\n|;
+			if(CORE::defined(\$_[0]->$fk->{FK_COLUMN_NAME})) {
+				return DBIx::Struct::one_row("$pt", {$pk => \$_[0]->$fk->{FK_COLUMN_NAME}});
+			} else { 
+				return 
+			} 
+		}
+FKT
 	}
 	my $references_tables = '';
 	for my $rk (@refkeys) {
@@ -386,7 +743,7 @@ sub setup_row {
 		$ft =~ tr/_/-/;
 		$ft =~ s/\b(\w)/\u$1/g;
 		$ft =~ tr/-//d;
-		$references_tables .= qq|
+		$references_tables .= <<RT;
 		sub ref${ft}s {
 			my (\$self, \@cond) = \@_;
 			my \%cond;
@@ -413,251 +770,59 @@ sub setup_row {
 			\$cond{$fk} = \$self->$pk;
 			return DBIx::Struct::one_row("$rk->{FK_TABLE_NAME}", \\\%cond);
 		}
-|;
+RT
 	}
 	my $accessors = '';
 	for my $k (keys %fields) {
 		next if exists $keywords{$k};
 		$k =~ s/[^\w\d]/_/g;
-		$accessors .= qq|
-		sub $k {| . (
-			!exists ($pk_fields{$k}) && (not ref $table)
-			? qq|
+		if (!exists ($pk_fields{$k}) && (not ref $table)) {
+			$accessors .= <<ACC;
+		sub $k {
 			if(\@_ > 1) {
 				\$_[0]->[@{[_row_data]}]->[$fields{$k}] = \$_[1];
 				\$_[0]->[@{[_row_updates]}]{"$k"} = undef;
 			}
-|
-			: ''
-		  )
-		  . qq|
 			\$_[0]->[@{[_row_data]}]->[$fields{$k}];
 		}
-		|;
+ACC
+		} else {
+			$accessors .= <<ACC;
+		sub $k {
+			\$_[0]->[@{[_row_data]}]->[$fields{$k}];
+		}
+ACC
+		}
+
 	}
-	my $package_header = qq|
+	my $package_header = <<PHD;
 		package ${ncn};
 		use strict;
 		use warnings;
 		use Carp;
 		use SQL::Abstract;
-		our \%fields = ($fields);\n|;
-	$package_header .= qq|\t\tour \$table_name = "$table";\n| if not ref $table;
-	my $new = <<NEW;
-		sub new {
-			my \$class = \$_[0];
-			my \$self = [ [] ];
-			if(defined(\$_[1]) && ref(\$_[1]) eq 'ARRAY') {
-				\$self->[@{[_row_data]}] = \$_[1];
-			}
-NEW
+		our \%fields = ($fields);
+PHD
 	if (not ref $table) {
-		$new .= <<NEW;
-			 elsif(defined \$_[1]) {
-				my \%insert;
-				for(my \$i = 1; \$i < \@_; \$i += 2) {
-					if (exists \$fields{\$_[\$i]}) {
-						\$self->[@{[_row_data]}]->[\$fields{\$_[\$i]}] = \$_[\$i + 1];
-						\$insert{\$_[\$i]} = \$_[\$i + 1];
-					}
-				}
-NEW
-		if ($required) {
-			$new .= <<NEW;
-				for my \$r ($required) {
-					error_message {
-						result  => 'SQLERR',
-						message => "required field \$r is absent for table $table"
-					} if not exists \$insert{\$r};
-				}
-NEW
-		}
-		$new .= <<NEW;
-				\$DBIx::Struct::conn->run(
-					sub {
-NEW
-		$new .= $driver_pk_insert{$connector_driver}->($table, $pk_bind, $pk_return);
-		$new .= <<NEW;
-	  			});
-			}
-NEW
+		$package_header .= <<PHD;
+		our \$table_name = "$table";
+PHD
 	}
-	$new .= <<NEW;
-	  		return bless \$self, \$class;
-		}
-NEW
-	my $filter_timestamp = qq|\t\tsub filter_timestamp {
-			my \$self = \$_[0];
-			if(\@_ == 1) {
-				for my \$f ($timestamps) {
-					\$self->[@{[_row_data]}][\$fields{\$f}] =~ s/\\.\\d+\$// if \$self->[@{[_row_data]}][\$fields{\$f}];
-				}
-			} else {
-				for my \$f (\@_[1..\$#_]) {
-					\$self->[@{[_row_data]}][\$fields{\$f}] =~ s/\\.\\d+\$// if \$self->[@{[_row_data]}][\$fields{\$f}];
-				}
-			}\n\t\t}\n|;
-	my $set = qq|\t\tsub set {
-			my \$self = \$_[0];
-			if(defined(\$_[1])) {
-				if(ref(\$_[1]) eq 'ARRAY') {
-					\$self->[@{[_row_data]}] = \$_[1];
-					\$self->[@{[_row_updates]}] = {};
-				} elsif(ref(\$_[1]) eq 'HASH') {
-					for my \$f (keys \%{\$_[1]}) {
-						if (exists \$fields{\$_[\$f]}) {
-							\$self->[@{[_row_data]}]->[\$fields{\$f}] = \$_[1]->{\$f};
-							\$self->[@{[_row_updates]}]{\$f} = undef;
-						}
-					}
-				} elsif(not ref(\$_[1])) {
-					for(my \$i = 1; \$i < \@_; \$i += 2) {
-						if (exists \$fields{\$_[\$i]}) {
-							\$self->[@{[_row_data]}]->[\$fields{\$_[\$i]}] = \$_[\$i + 1];
-							\$self->[@{[_row_updates]}]{\$_[\$i]} = undef;
-						}
-					}
-				}
-			}
-			\$self;
-		}\n|;
-
-	my $data = qq|\t\tsub data {
-			my \$self = \$_[0];
-			my \@ret_keys;
-			my \$ret;
-			if(defined(\$_[1])) {
-				if(ref(\$_[1]) eq 'ARRAY') {
-					if(!\@{\$_[1]}) {
-						\$ret = \$self->[@{[_row_data]}];
-					} else {
-						\$ret = [map {\$self->[@{[_row_data]}]->[\$fields{\$_}] } grep {exists \$fields{\$_}} \@{\$_[1]}];
-					}
-				} else {
-					for my \$k (\@_[1..\$#_]) {
-						push \@ret_keys, \$k if exists \$fields{\$k};
-					}
-				}
-			} else {
-				\@ret_keys = keys \%fields;
-			}
-			\$ret = { map {\$_ => \$self->[@{[_row_data]}]->[\$fields{\$_}] } \@ret_keys} if not defined \$ret;
-			\$ret
-		}\n|;
-	my $update;
-	if (not ref $table) {
-		$update = qq|\t\tsub update {
-			my \$self = \$_[0];
-			if(\@_ > 1 && ref(\$_[1]) eq 'HASH') {
-				my (\$set, \$where, \@bind, \@bind_where);
-				\$set = join(", ", map { ref(\$_[1]{\$_}) eq 'SCALAR'? "\$_ = " . \${\$_[1]{\$_}}: "\$_ = ?" } keys \%{\$_[1]});
-				\@bind = grep {ref(\$_) ne 'SCALAR'} values  \%{\$_[1]};
-				if(\@_ > 2) {
-					my \$cond = \$_[2];
-					if(not ref(\$cond)) {
-						\$cond = {(selectKeys)[0] => \$_[2]};
-					}
-					(\$where, \@bind_where) = SQL::Abstract->new->where(\$cond);
-				}
-				\$DBIx::Struct::conn->run(sub {
-					\$_->do(qq{update $table set \$set \$where}, undef, \@bind, \@bind_where)
-					or error_message {
-						result  => 'SQLERR',
-						message => 'error '.\$_->errstr.' updating table $table'
-					}
-				});
-			} elsif (\@\$self > 1 && \%{\$self->[@{[_row_updates]}]}) {
-				my \$set = join(", ",
-					map { ref(\$self->[@{[_row_data]}]->[\$fields{\$_}]) eq 'SCALAR'
-							? "\$_ = " . \${\$self->[@{[_row_data]}]->[\$fields{\$_}]}
-							: "\$_ = ?" } keys \%{\$self->[@{[_row_updates]}]});
-				\$DBIx::Struct::conn->run(
-					sub {
-						\$_->do(qq{update $table set \$set where $pk_where}, undef, (
-							map {\$self->[@{[_row_data]}]->[\$fields{\$_}]}
-							grep {ref(\$self->[@{[_row_data]}]->[\$fields{\$_}]) ne 'SCALAR'}
-							keys \%{\$self->[@{[_row_updates]}]}
-							), $pk_bind)
-						or error_message {
-							result  => 'SQLERR',
-							message => 'error '.\$_->errstr.' updating table $table'
-						}
-					}
-				);
-				\$self->[@{[_row_updates]}] = {};
-			}
-		}\n|;
-	} else {
-		$update = "\t\tsub update {}\n";
-	}
-	my $delete;
-	if (not ref $table) {
-		$delete = qq|\t\tsub delete {
-			my \$self = \$_[0];
-			if(\@_ > 1) {
-				my (\$where, \@bind);
-				my \$cond = \$_[1];
-				if(not ref(\$cond)) {
-					\$cond = {(selectKeys)[0] => \$_[1]};
-				}
-				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
-				\$DBIx::Struct::conn->run(sub {
-					\$_->do(qq{delete from $table \$where}, undef, \@bind)
-					or error_message {
-						result  => 'SQLERR',
-						message => 'error '.\$_->errstr.' updating table $table'
-					}
-				});
-			} else {
-				\$DBIx::Struct::conn->run(
-					sub {
-						\$_->do(qq{delete from $table where $pk_where}, undef, $pk_bind)
-						or error_message {
-							result  => 'SQLERR',
-							message => 'error '.\$_->errstr.' updating table $table'
-						}
-					});
-			}
-		}\n|;
-	} else {
-		$delete = "\t\tsub delete {}\n";
-	}
-	my $fetch;
-	if (not ref $table) {
-		$fetch = qq|\t\tsub fetch {
-			my \$self = \$_[0];
-			if(\@_ > 1) {
-				my (\$where, \@bind);
-				my \$cond = \$_[1];
-				if(not ref(\$cond)) {
-					\$cond = {(selectKeys)[0] => \$_[1]};
-				}
-				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
-				\$DBIx::Struct::conn->run(sub {
-					\@{\$self->[@{[_row_data]}]} = \$_->selectrow_array(qq{select * from $table \$where}, undef, \@bind)
-					or error_message {
-						result  => 'SQLERR',
-						message => 'error '.\$_->errstr.' fetching table $table'
-					}
-				});
-			} else {
-				\$DBIx::Struct::conn->run(
-					sub {
-						\@{\$self->[@{[_row_data]}]} = \$_->selectrow_array(qq{select *  from $table where $pk_where}, undef, $pk_bind)
-						or error_message {
-							result  => 'SQLERR',
-							message => 'error '.\$_->errstr.' fetching table $table'
-						}
-					});
-			}
-		}\n|;
-	} else {
-		$fetch = "\t\tsub fetch {}\n";
-	}
+	my $new = make_object_new($table, $required, $pk_row_data, $pk_returninig);
+	my $filter_timestamp = make_object_filter_timestamp($timestamps);
+	my $set              = make_object_set();
+	my $data             = make_object_data();
+	my $update           = make_object_update($table, $pk_where, $pk_row_data);
+	my $delete           = make_object_delete($table, $pk_where, $pk_row_data);
+	my $fetch            = make_object_fetch($table, $pk_where, $pk_row_data);
 	my $destroy;
 	if (not ref $table) {
-		$destroy =
-		  qq|\t\tsub DESTROY {\n\t\t\tno warnings 'once';\n\t\t\t\$_[0]->update if \$DBIx::Struct::update_on_destroy;\n\t\t}\n|;
+		$destroy = <<DESTROY;
+		sub DESTROY {
+			no warnings 'once';
+			\$_[0]->update if \$DBIx::Struct::update_on_destroy;
+		}
+DESTROY
 	} else {
 		$destroy = '';
 	}
@@ -665,7 +830,7 @@ NEW
 	  $filter_timestamp, $set, $data, $fetch,
 	  $update, $delete, $destroy, $accessors, $foreign_tables,
 	  $references_tables;
-	print $eval_code;
+	#print $eval_code;
 	eval $eval_code;
 	return $ncn;
 }
