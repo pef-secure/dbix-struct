@@ -55,6 +55,7 @@ our @EXPORT = qw{
 
 our @EXPORT_OK = qw{
   $conn
+  hash_ref_slice
 };
 
 our $conn;
@@ -128,6 +129,15 @@ INS
 $driver_pk_insert{Pg}     = $driver_pk_insert{_returning};
 $driver_pk_insert{mysql}  = $driver_pk_insert{_last_id_undef};
 $driver_pk_insert{SQLite} = $driver_pk_insert{_last_id_empty};
+
+sub hash_ref_slice($@) {
+	my ($hashref, @slice) = @_;
+	error_message {
+		message => "first parameter is not hash reference",
+		result  => 'INTERR',
+	} if 'HASH' ne ref $hashref;
+	map { $_ => $hashref->{$_} } @slice;
+}
 
 sub check_package_scalar {
 	my ($package, $scalar) = @_;
