@@ -595,11 +595,6 @@ FETCH
 }
 
 sub setup_row {
-	error_message {
-		result  => 'SQLERR',
-		message => "Unsupported driver $connector_driver",
-	  }
-	  unless exists $driver_pk_insert{$connector_driver};
 	my ($table, $ncn) = @_;
 	$ncn ||= make_name($table);
 	no strict "refs";
@@ -661,6 +656,11 @@ sub setup_row {
 			}
 		);
 	}
+	error_message {
+		result  => 'SQLERR',
+		message => "Unsupported driver $connector_driver",
+	  }
+	  unless exists $driver_pk_insert{$connector_driver};
 	my $fields = join ", ", map { qq|"$_" => $fields{$_}| } keys %fields;
 	my $required = '';
 	if (@required) {
