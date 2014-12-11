@@ -151,7 +151,7 @@ sub check_package_scalar {
 
 sub import {
 	my ($class, @args) = @_;
-	state $initialized = 0;
+	state $init_import = 0;
 	my $defconn = 0;
 	for (my $i = 0 ; $i < @args ; ++$i) {
 		if ($args[$i] eq 'connector') {
@@ -175,7 +175,7 @@ sub import {
 			--$i;
 		} elsif ($args[$i] eq 'error_class') {
 			my (undef, $emc) = splice @args, $i, 2;
-			$error_message_class = $emc if !$initialized;
+			$error_message_class = $emc if !$init_import;
 			--$i;
 		} elsif ($args[$i] eq 'args') {
 			(undef, $connector_args) = splice @args, $i, 2;
@@ -187,18 +187,18 @@ sub import {
 			*conn = \${$connector_object};
 		}
 	}
-	if (!$initialized) {
+	if (!$init_import) {
 		my $eval = "*error_message = \\&$error_message_class" . "::error_message";
 		eval $eval;
 	}
 	my %imps = map { $_ => undef } @args, @EXPORT;
 	$class->export_to_level(1, $class, keys %imps);
-	$initialized = 1;
+	$init_import = 1;
 }
 
 sub connect {
-	state $initialized = 0;
-	if (!$initialized) {
+	state $init_connect = 0;
+	if (!$init_connect) {
 		if (not $conn) {
 			my ($dsn, $user, $password) = @_;
 			if ($dsn && $dsn !~ /^dbi:/) {
@@ -232,7 +232,7 @@ sub connect {
 		}
 		$connector_driver = $conn->driver->{driver};
 		populate();
-		$initialized = 1;
+		$init_connect = 1;
 	}
 	$conn;
 }
