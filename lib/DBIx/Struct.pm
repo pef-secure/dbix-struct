@@ -619,7 +619,7 @@ sub setup_row {
 	my @refkeys;
 	if (not ref $table) {
 		# means this is just one simple table
-		$conn->run(
+		DBIx::Struct::connect->run(
 			sub {
 				my $cih = $_->column_info(undef, undef, $table, undef);
 				error_message {
@@ -655,7 +655,7 @@ sub setup_row {
 	} else {
 		# means this is a query
 		%fields = %{$table->{NAME_hash}};
-		$conn->run(
+		DBIx::Struct::connect->run(
 			sub {
 				for (my $cn = 0 ; $cn < @{$table->{NAME}} ; ++$cn) {
 					my $ti = $_->type_info($table->{TYPE}->[$cn]);
