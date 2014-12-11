@@ -257,7 +257,7 @@ sub connect {
 
 sub populate {
 	my @tables;
-	$conn->run(
+	DBIx::Struct::connect->run(
 		sub {
 			my $sth = $_->table_info('', '', '%', "TABLE");
 			return if not $sth;
@@ -927,12 +927,12 @@ DESTROY
 			$query = qq{$table $where};
 		}
 		my $sth;
-		return $conn->run(
+		return DBIx::Struct::connect->run(
 			sub {
 				$sth = $_->prepare($query)
 				  or error_message {
 					result  => 'SQLERR',
-					message => $conn->dbh->errstr,
+					message => $_->errstr,
 					query   => $query,
 				  };
 				$sth->execute(@bind)
