@@ -196,45 +196,51 @@ sub import {
 	$init_import = 1;
 }
 
-sub connect {
-	state $init_connect = 0;
-	if (!$init_connect) {
-		$init_connect = 1;
-		if (not $conn) {
-			my ($dsn, $user, $password) = @_;
-			if ($dsn && $dsn !~ /^dbi:/) {
-				$dsn = "dbi:Pg:dbname=$dsn";
-			}
-			my $connect_attrs = {
-				AutoCommit          => 1,
-				PrintError          => 0,
-				AutoInactiveDestroy => 1,
-				RaiseError          => 0,
-			};
-			if ($dsn) {
-				my ($driver) = $dsn =~ /^dbi:([^:]+):/;
-				if ($driver) {
-					if ($driver eq 'Pg') {
-						$connect_attrs->{pg_enable_utf8} = 1;
-					} elsif ($driver eq 'mysql') {
-						$connect_attrs->{mysql_enable_utf8} = 1;
-					}
+sub _connected {
+	$conn;
+}
+
+sub _not_yet_connected {
+	if (not $conn) {
+		my ($dsn, $user, $password) = @_;
+		if ($dsn && $dsn !~ /^dbi:/) {
+			$dsn = "dbi:Pg:dbname=$dsn";
+		}
+		my $connect_attrs = {
+			AutoCommit          => 1,
+			PrintError          => 0,
+			AutoInactiveDestroy => 1,
+			RaiseError          => 0,
+		};
+		if ($dsn) {
+			my ($driver) = $dsn =~ /^dbi:([^:]+):/;
+			if ($driver) {
+				if ($driver eq 'Pg') {
+					$connect_attrs->{pg_enable_utf8} = 1;
+				} elsif ($driver eq 'mysql') {
+					$connect_attrs->{mysql_enable_utf8} = 1;
 				}
 			}
-			if (!@$connector_args) {
-				@$connector_args = ($dsn, $user, $password, $connect_attrs);
-			}
-			$conn = $connector_module->$connector_constructor(@$connector_args)
-			  or error_message {
-				message => "DB connect error",
-				result  => 'SQLERR',
-			  };
-			$conn->mode('fixup');
 		}
-		$connector_driver = $conn->driver->{driver};
-		populate();
+		if (!@$connector_args) {
+			@$connector_args = ($dsn, $user, $password, $connect_attrs);
+		}
+		$conn = $connector_module->$connector_constructor(@$connector_args)
+		  or error_message {
+			message => "DB connect error",
+			result  => 'SQLERR',
+		  };
+		$conn->mode('fixup');
 	}
+	$connector_driver = $conn->driver->{driver};
+	no warnings 'redefine';
+	*connect = \&_connected;
+	populate();
 	$conn;
+}
+
+sub connect {
+	goto &_not_yet_connected;
 }
 
 {
@@ -596,6 +602,12 @@ FETCH
 
 sub setup_row {
 	my ($table, $ncn) = @_;
+	my $conn = DBIx::Struct::connect;
+	error_message {
+		result  => 'SQLERR',
+		message => "Unsupported driver $connector_driver",
+	  }
+	  unless exists $driver_pk_insert{$connector_driver};
 	$ncn ||= make_name($table);
 	no strict "refs";
 	if (grep { !/::$/ } keys %{"${ncn}::"}) {
@@ -610,7 +622,7 @@ sub setup_row {
 	my @refkeys;
 	if (not ref $table) {
 		# means this is just one simple table
-		DBIx::Struct::connect->run(
+		$conn->run(
 			sub {
 				my $cih = $_->column_info(undef, undef, $table, undef);
 				error_message {
@@ -646,7 +658,7 @@ sub setup_row {
 	} else {
 		# means this is a query
 		%fields = %{$table->{NAME_hash}};
-		DBIx::Struct::connect->run(
+		$conn->run(
 			sub {
 				for (my $cn = 0 ; $cn < @{$table->{NAME}} ; ++$cn) {
 					my $ti = $_->type_info($table->{TYPE}->[$cn]);
@@ -656,11 +668,6 @@ sub setup_row {
 			}
 		);
 	}
-	error_message {
-		result  => 'SQLERR',
-		message => "Unsupported driver $connector_driver",
-	  }
-	  unless exists $driver_pk_insert{$connector_driver};
 	my $fields = join ", ", map { qq|"$_" => $fields{$_}| } keys %fields;
 	my $required = '';
 	if (@required) {
