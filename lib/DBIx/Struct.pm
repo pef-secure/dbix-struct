@@ -173,8 +173,9 @@ sub import {
 		} elsif ($args[$i] eq 'connect_timeout') {
 			(undef, $db_reconnect_timeout) = splice @args, $i, 2;
 			--$i;
-		} elsif ($args[$i] eq 'error_class' && !$initialized) {
-			my (undef, $error_message_class) = splice @args, $i, 2;
+		} elsif ($args[$i] eq 'error_class') {
+			my (undef, $emc) = splice @args, $i, 2;
+			$error_message_class = $emc if !$initialized;
 			--$i;
 		} elsif ($args[$i] eq 'args') {
 			(undef, $connector_args) = splice @args, $i, 2;
