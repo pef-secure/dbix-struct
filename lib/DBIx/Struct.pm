@@ -135,7 +135,8 @@ sub hash_ref_slice($@) {
 	error_message {
 		message => "first parameter is not hash reference",
 		result  => 'INTERR',
-	} if 'HASH' ne ref $hashref;
+	  }
+	  if 'HASH' ne ref $hashref;
 	map { $_ => $hashref->{$_} } @slice;
 }
 
@@ -194,51 +195,45 @@ sub import {
 	$initialized = 1;
 }
 
-sub _connected {
-	$conn;
-}
-
-sub _not_yet_connected {
-	if (not $conn) {
-		my ($dsn, $user, $password) = @_;
-		if ($dsn && $dsn !~ /^dbi:/) {
-			$dsn = "dbi:Pg:dbname=$dsn";
-		}
-		my $connect_attrs = {
-			AutoCommit          => 1,
-			PrintError          => 0,
-			AutoInactiveDestroy => 1,
-			RaiseError          => 0,
-		};
-		if ($dsn) {
-			my ($driver) = $dsn =~ /^dbi:([^:]+):/;
-			if ($driver) {
-				if ($driver eq 'Pg') {
-					$connect_attrs->{pg_enable_utf8} = 1;
-				} elsif ($driver eq 'mysql') {
-					$connect_attrs->{mysql_enable_utf8} = 1;
+sub connect {
+	state $initialized = 0;
+	if (!$initialized) {
+		if (not $conn) {
+			my ($dsn, $user, $password) = @_;
+			if ($dsn && $dsn !~ /^dbi:/) {
+				$dsn = "dbi:Pg:dbname=$dsn";
+			}
+			my $connect_attrs = {
+				AutoCommit          => 1,
+				PrintError          => 0,
+				AutoInactiveDestroy => 1,
+				RaiseError          => 0,
+			};
+			if ($dsn) {
+				my ($driver) = $dsn =~ /^dbi:([^:]+):/;
+				if ($driver) {
+					if ($driver eq 'Pg') {
+						$connect_attrs->{pg_enable_utf8} = 1;
+					} elsif ($driver eq 'mysql') {
+						$connect_attrs->{mysql_enable_utf8} = 1;
+					}
 				}
 			}
+			if (!@$connector_args) {
+				@$connector_args = ($dsn, $user, $password, $connect_attrs);
+			}
+			$conn = $connector_module->$connector_constructor(@$connector_args)
+			  or error_message {
+				message => "DB connect error",
+				result  => 'SQLERR',
+			  };
+			$conn->mode('fixup');
 		}
-		if (!@$connector_args) {
-			@$connector_args = ($dsn, $user, $password, $connect_attrs);
-		}
-		$conn = $connector_module->$connector_constructor(@$connector_args)
-		  or error_message {
-			message => "DB connect error",
-			result  => 'SQLERR',
-		  };
-		$conn->mode('fixup');
+		$connector_driver = $conn->driver->{driver};
+		populate();
+		$initialized = 1;
 	}
-	$connector_driver = $conn->driver->{driver};
-	no warnings 'redefine';
-	*connect = \&_connected;
-	populate();
 	$conn;
-}
-
-sub connect {
-	goto &_not_yet_connected;
 }
 
 {
