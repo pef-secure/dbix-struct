@@ -199,6 +199,7 @@ sub import {
 sub connect {
 	state $init_connect = 0;
 	if (!$init_connect) {
+		$init_connect = 1;
 		if (not $conn) {
 			my ($dsn, $user, $password) = @_;
 			if ($dsn && $dsn !~ /^dbi:/) {
@@ -232,7 +233,6 @@ sub connect {
 		}
 		$connector_driver = $conn->driver->{driver};
 		populate();
-		$init_connect = 1;
 	}
 	$conn;
 }
