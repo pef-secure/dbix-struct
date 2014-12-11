@@ -231,9 +231,9 @@ sub _not_yet_connected {
 		$conn->mode('fixup');
 	}
 	$connector_driver = $conn->driver->{driver};
-	populate();
 	no warnings 'redefine';
 	*connect = \&_connected;
+	populate();
 	$conn;
 }
 
