@@ -102,6 +102,8 @@ is the same as
 
  DBC::Article->delete({id_article => $req>{id_article}});
 
+And
+
  new_row(
 			article => hash_ref_slice $req,
 			qw(title content id_author)
@@ -113,7 +115,7 @@ is the same as
             title     => $req->{title},
             content   => $req->{content},
             id_author => $req->{id_author}
-		);
+  );
 
 =head3 C<connect($data_source, $username, $auth)>
 
