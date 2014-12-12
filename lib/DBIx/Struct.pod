@@ -100,7 +100,7 @@ hash reference and array of keys. Exportable. Returns array of key-value pairs.
 
 is the same as
 
- DBC::Article->delete({id_article => $req>{id_article}});
+ DBC::Article->delete({id_article => $req->{id_article}});
 
 And
 
