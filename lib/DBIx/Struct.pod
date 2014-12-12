@@ -89,6 +89,8 @@ Possible usage:
  
  use DBIx::Struct;
 
+=head2 METHODS
+
 =head3 C<hash_ref_slice($hashref, @keys)>
 
 Simple hash slice function before perl-5.20 is widely distributred. It accepts
