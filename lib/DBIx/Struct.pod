@@ -105,16 +105,16 @@ is the same as
 And
 
  new_row(
-			article => hash_ref_slice $req,
-			qw(title content id_author)
-		);
+    article => hash_ref_slice $req,
+    qw(title content id_author)
+ );
 
 is the same as 
 
   new_row('article', 
-            title     => $req->{title},
-            content   => $req->{content},
-            id_author => $req->{id_author}
+     title     => $req->{title},
+     content   => $req->{content},
+     id_author => $req->{id_author}
   );
 
 =head3 C<connect($data_source, $username, $auth)>
