@@ -214,7 +214,7 @@ known from class name.
 
 =head3 C<set>
 
-Sets values of table columns. Has three forms:
+Sets values of table columns. Returns object's $self value. Has three forms:
 
 =over
 
@@ -285,7 +285,7 @@ Updates its row or table
 
 =item C<update()>
 
-Updates changed (if any) columns of the row.
+Updates changed (if any) columns of the row. Returns object's $self value.
 
 =item C<< update({column => "value"}, $where) >>
 
@@ -327,14 +327,14 @@ with bind value 1
 
 =head3 C<filter_timestamp>
 
-Removes microseconds from timestamp columns. 
+Removes microseconds from timestamp columns. Returns object's $self value.
  
  2010-05-19 23:30:01.737126 -> 2010-05-19 23:30:01
 
 =head3 C<fetch>
 
 Fetches the whole row data from table. Useful when primary key is known after
-insert but other columns are set by database.
+insert but other columns are set by database. Returns object's $self value.
 
 =head3 B<Accessors>
 
