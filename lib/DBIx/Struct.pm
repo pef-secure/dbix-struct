@@ -54,7 +54,7 @@ our @EXPORT = qw{
 };
 
 our @EXPORT_OK = qw{
-  $conn
+  connector
   hash_ref_slice
 };
 
@@ -154,14 +154,14 @@ sub import {
 	state $init_import = 0;
 	my $defconn = 0;
 	for (my $i = 0 ; $i < @args ; ++$i) {
-		if ($args[$i] eq 'connector') {
+		if ($args[$i] eq 'connector_module') {
 			(undef, $connector_module) = splice @args, $i, 2;
 			--$i;
 			if (not $defconn and check_package_scalar($connector_module, 'conn')) {
 				no strict 'refs';
 				*conn = \${$connector_module . '::conn'};
 			}
-		} elsif ($args[$i] eq 'constructor') {
+		} elsif ($args[$i] eq 'connector_constructor') {
 			(undef, $connector_constructor) = splice @args, $i, 2;
 			--$i;
 		} elsif ($args[$i] eq 'table_classes_namespace') {
@@ -177,7 +177,7 @@ sub import {
 			my (undef, $emc) = splice @args, $i, 2;
 			$error_message_class = $emc if !$init_import;
 			--$i;
-		} elsif ($args[$i] eq 'args') {
+		} elsif ($args[$i] eq 'connector_args') {
 			(undef, $connector_args) = splice @args, $i, 2;
 			--$i;
 		} elsif ($args[$i] eq 'connector_object') {
@@ -196,7 +196,7 @@ sub import {
 	$init_import = 1;
 }
 
-sub _connected {
+sub connector {
 	$conn;
 }
 
@@ -234,7 +234,7 @@ sub _not_yet_connected {
 	}
 	$connector_driver = $conn->driver->{driver};
 	no warnings 'redefine';
-	*connect = \&_connected;
+	*connect = \&connector;
 	populate();
 	$conn;
 }

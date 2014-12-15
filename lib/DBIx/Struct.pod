@@ -38,15 +38,15 @@ These parameters are used for integration:
 
 =over
 
-=item connector
+=item connector_module
 
  Connector's module name. By default used its own connector.
 
-=item constructor
+=item connector_constructor
 
  Connector's constructor function name. By default is 'new'.
 
-=item args
+=item connector_args
 
  Connector's arguments: ($dsn, $user, $password, $connect_attrs)
 
@@ -79,17 +79,17 @@ These parameters are used for integration:
 =back
 
 This module always exports three functions: C<one_row()>, C<all_rows()> and C<new_row()>.
-Optionally it can export C<$conn> - connector's singleton object and C<hash_ref_slice()>
-function.
+Optionally it can export C<connector()> - connector's singleton object and 
+C<hash_ref_slice()> function.
 
 Possible usage:
 
  use DBIx::Struct (
-	connector   => 'PEF::Front::Connector',
-	error_class => 'DBIx::Struct::Error::Hash'
+	connector_module => 'PEF::Front::Connector',
+	error_class      => 'DBIx::Struct::Error::Hash'
  );
  
- use DBIx::Struct qw($conn hash_ref_slice);
+ use DBIx::Struct qw(connector hash_ref_slice);
  
  use DBIx::Struct;
 
