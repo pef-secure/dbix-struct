@@ -68,10 +68,10 @@ How to access this structure
  
 To use SQL 
 
- use DBIx::Struct qw($conn);
+ use DBIx::Struct qw(connector);
  # ... 
  my $name;
- $conn->run(sub {
+ connector->run(sub {
    ($name) = $_->selectrow_array('select name from client join '
      . 'session on (id = id_client) where session_key = ?', undef, $input->{session})
    }
