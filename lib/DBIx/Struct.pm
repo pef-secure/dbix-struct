@@ -853,7 +853,7 @@ DESTROY
 	sub execute {
 		my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset);
 		for (my $i = 2 ; $i < @_ ; ++$i) {
-			next if ref $_[$i];
+			next unless defined $_[$i] and not ref $_[$i];
 			if ($_[$i] eq '-group_by') {
 				(undef, $groupby) = splice @_, $i, 2;
 				--$i;
