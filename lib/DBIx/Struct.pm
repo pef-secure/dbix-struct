@@ -251,8 +251,7 @@ sub connect {
 		my $simple_table = (index ($table, " ") == -1);
 		my $ncn;
 		if ($simple_table) {
-			$ncn = $table_classes_namespace . "::"
-			  . join ('', map { ucfirst ($_) } split (/[^a-zA-Z0-9]/, $table));
+			$ncn = $table_classes_namespace . "::" . join ('', map { ucfirst ($_) } split (/[^a-zA-Z0-9]/, $table));
 		} else {
 			$md5->add($table);
 			$ncn = $query_classes_namespace . "::" . "G" . $md5->hexdigest;
@@ -337,8 +336,7 @@ NEW
 				DBIx::Struct::connect->run(
 					sub {
 NEW
-		$new .=
-		  $driver_pk_insert{$connector_driver}->($table, $pk_row_data, $pk_returninig);
+		$new .= $driver_pk_insert{$connector_driver}->($table, $pk_row_data, $pk_returninig);
 		$new .= <<NEW;
 	  			});
 			}
@@ -696,8 +694,7 @@ sub setup_row {
 	my %pk_fields;
 	if (@pkeys) {
 		@pk_fields{@pkeys} = undef;
-		$pk_row_data =
-		  join (", ", map { qq|\$self->[@{[_row_data]}]->[$fields{"$_"}]| } @pkeys);
+		$pk_row_data = join (", ", map { qq|\$self->[@{[_row_data]}]->[$fields{"$_"}]| } @pkeys);
 		$pk_returninig = 'returning ' . join (", ", @pkeys);
 		$pk_where = join (" and ", map { "$_ = ?" } @pkeys);
 		my $sk_list = join (", ", map { qq|"$_"| } @pkeys);
@@ -821,7 +818,7 @@ PHD
 		our \$table_name = "$table";
 PHD
 	}
-	my $new = make_object_new($table, $required, $pk_row_data, $pk_returninig);
+	my $new              = make_object_new($table, $required, $pk_row_data, $pk_returninig);
 	my $filter_timestamp = make_object_filter_timestamp($timestamps);
 	my $set              = make_object_set();
 	my $data             = make_object_data();
@@ -892,6 +889,7 @@ DESTROY
 			}
 		}
 		my ($code, $table, $conditions, $order, $limit, $offset) = @_;
+		my $have_conditions = @_ > 2;
 		$conditions ||= $up_conditions;
 		$order      ||= $up_order;
 		$limit      ||= $up_limit;
@@ -902,15 +900,19 @@ DESTROY
 		my $ncn = make_name($table);
 		if ($simple_table) {
 			setup_row($table);
-			if (defined ($conditions) && !ref ($conditions)) {
+			if ($have_conditions and not ref $conditions) {
 				my $id = ($ncn->selectKeys())[0]
 				  or error_message {
 					result  => 'SQLERR',
 					message => "unknown primary key",
 					query   => "select * from $table",
 				  };
-				$where = "where $id = ?";
-				@bind  = ($conditions);
+				if (defined $conditions) {
+					$where = "where $id = ?";
+					@bind  = ($conditions);
+				} else {
+					$where = "where $id is null";
+				}
 			} else {
 				($where, @bind) = $sql_abstract->where($conditions, $order);
 			}
