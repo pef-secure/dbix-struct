@@ -1020,8 +1020,9 @@ sub _build_complex_query {
 		my $where;
 		my @bind;
 		my $simple_table = (not ref $table and index ($table, " ") == -1);
-		my $ncn = make_name($table);
+		my $ncn;
 		if ($simple_table) {
+			$ncn = make_name($table);
 			setup_row($table);
 			if ($have_conditions and not ref $conditions) {
 				my $id = ($ncn->selectKeys())[0]
@@ -1059,6 +1060,7 @@ sub _build_complex_query {
 			$query = qq{select * from $table $where};
 		} else {
 			$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table) . " $where";
+			$ncn = make_name($query);
 		}
 		my $sth;
 		return DBIx::Struct::connect->run(
