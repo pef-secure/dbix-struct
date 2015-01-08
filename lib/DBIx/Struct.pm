@@ -718,6 +718,7 @@ SK
 		}
 	}
 	my $foreign_tables = '';
+	my %foreign_tables;
 	for my $fk (@fkeys) {
 		$fk->{FK_COLUMN_NAME} =~ s/"//g;
 		my $fn = $fk->{FK_COLUMN_NAME};
@@ -735,6 +736,13 @@ SK
 				return 
 			} 
 		}
+FKT
+		$foreign_tables{$pt} = [$fk->{FK_COLUMN_NAME} => $pk];
+	}
+	for my $ft (keys %foreign_tables) {
+		my $ucft = ucfirst $ft;
+		$foreign_tables .= <<FKT;
+		sub foreignKey$ucft () {("$foreign_tables{$ft}[0]" => "$foreign_tables{$ft}[1]")}
 FKT
 	}
 	my $references_tables = '';
@@ -844,6 +852,121 @@ DESTROY
 	eval $eval_code;
 	return $ncn;
 }
+
+sub _populated_table {
+	my $ncn = $_[0];
+	no strict "refs";
+	if (grep { !/::$/ } keys %{"${ncn}::"}) {
+		return 1;
+	}
+	return;
+}
+
+sub _table_name()    { 0 }
+sub _table_alias()   { 1 }
+sub _table_join()    { 2 }
+sub _table_join_on() { 3 }
+
+sub _biuld_complex_query {
+	my $table = $_[0];
+	return $table if not ref $table;
+	my @from;
+	my @columns;
+	my @linked_list = (
+		ref ($table) eq 'ARRAY'
+		? @$table
+		: error_message {
+			result  => 'SQLERR',
+			message => "Unsupported type of query: " . ref ($table)
+		}
+	);
+	for (my $i = 0 ; $i < @linked_list ; ++$i) {
+		my $le = $linked_list[$i];
+		if (substr ($le, 0, 1) ne '-') {
+			my ($tn, $ta) = split ' ', $le;
+			$ta = $tn if not $ta;
+			error_message {
+				result  => 'SQLERR',
+				message => "Unknown table $tn"
+			  }
+			  unless _populated_table(make_name($tn));
+			push @from, [$tn, $ta];
+		} else {
+			my $cmd = substr ($le, 1);
+			if ($cmd eq 'left') {
+				$from[-1][_table_join] = 'left join';
+			} elsif ($cmd eq 'right') {
+				$from[-1][_table_join] = 'right join';
+			} elsif ($cmd eq 'join') {
+				$from[-1][_table_join] = 'join';
+			} elsif ($cmd eq 'on') {
+				my ($on) = splice @linked_list, $i + 1, 1;
+				$from[-1][_table_join_on] = $on;
+			} elsif ($cmd eq 'using') {
+				my ($using) = splice @linked_list, $i + 1, 1;
+				$from[-1][_table_join_on] = $using;
+			} elsif ($cmd eq 'columns') {
+				my ($cols) = splice @linked_list, $i + 1, 1;
+				if (ref ($cols)) {
+					push @columns, @$cols;
+				} else {
+					push @columns, $cols;
+				}
+			}
+		}
+	}
+	error_message {
+		result  => 'SQLERR',
+		message => "No table to build query on"
+	} if !@from;
+	for (my $idx = 1 ; $idx < @from ; ++$idx) {
+		next if $from[$idx][_table_join_on] or not $from[$idx - 1][_table_join];
+		my $cta  = $from[$idx][_table_alias];
+		my $cto  = make_name($from[$idx][_table_name]);
+		my $ucct = ucfirst $from[$idx][_table_name];
+		my @join;
+		for (my $i = $idx - 1 ; $i >= 0 ; --$i) {
+			next if not $from[$i][_table_join];
+			my $ptn    = $from[$i][_table_name];
+			my $ucfptn = ucfirst $ptn;
+			if ($cto->can("foreignKey$ucfptn")) {
+				my $fkfn = "foreignKey$ucfptn";
+				my ($ctf, $ptk) = $cto->$fkfn;
+				push @join, "$cta.$ctf = " . $from[$i][_table_alias] . ".$ptk";
+			} else {
+				my $ptno = make_name($ptn);
+				if ($ptno->can("foreignKey$ucct")) {
+					my $fkfn = "foreignKey$ucct";
+					my ($ptf, $ctk) = $ptno->$fkfn;
+					push @join, "$cta.$ctk = " . $from[$i][_table_alias] . ".$ptf";
+				}
+			}
+		}
+		$from[$idx][_table_join_on] = join (" and ", @join);
+	}
+	my $from = '';
+	@columns = ('*') if not @columns;
+	my $joined = 0;
+	for (my $idx = 0 ; $idx < @from ; ++$idx) {
+		if (not $joined) {
+			$from .= " " . $from[$idx][_table_name];
+			$from .= " " . $from[$idx][_table_alias] if $from[$idx][_table_alias] ne $from[$idx][_table_name];
+		}
+		if ($from[$idx][_table_join]) {
+			my $nt = $from[$idx + 1];
+			$from .= " " . $from[$idx][_table_join];
+			$from .= " " . $nt->[_table_name];
+			$from .= " " . $nt->[_table_alias] if $nt->[_table_alias] ne $nt->[_table_name];
+			$from .= " on(" . $nt->[_table_join_on] . ")";
+			$joined = 1;
+		} else {
+			$from .= "," if $idx != $#from;
+			$joined = 0;
+		}
+	}
+	return "select " . join (", ", @columns) . " from" . $from;
+}
+
 {
 	my $sql_abstract = SQL::Abstract->new;
 
@@ -896,7 +1019,7 @@ DESTROY
 		$offset     ||= $up_offset;
 		my $where;
 		my @bind;
-		my $simple_table = (index ($table, " ") == -1);
+		my $simple_table = (not ref $table and index ($table, " ") == -1);
 		my $ncn = make_name($table);
 		if ($simple_table) {
 			setup_row($table);
@@ -935,7 +1058,7 @@ DESTROY
 		if ($simple_table) {
 			$query = qq{select * from $table $where};
 		} else {
-			$query = qq{$table $where};
+			$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table) . " $where";
 		}
 		my $sth;
 		return DBIx::Struct::connect->run(
