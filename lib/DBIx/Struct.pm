@@ -867,7 +867,7 @@ sub _table_alias()   { 1 }
 sub _table_join()    { 2 }
 sub _table_join_on() { 3 }
 
-sub _biuld_complex_query {
+sub _build_complex_query {
 	my $table = $_[0];
 	return $table if not ref $table;
 	my @from;
