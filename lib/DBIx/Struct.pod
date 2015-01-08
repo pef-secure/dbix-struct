@@ -130,9 +130,48 @@ created for table "client_data". This namespace is configurable.
 
 =head3 C<one_row($table, $abstract_where, $order_by, $limit, $offset)>
 
-Selects one row from given table and returns its object. $table can be a simple 
-table name or returning data query expression. In last case DBQ:: namespace is 
-used to name class of row object of such a query.
+Selects one row from given table and returns its object. 
+
+C<$table> can be a simple table name, SQL query beginning with "select" and 
+ending with SQL-from clause or array reference to generate SQL from Perl data
+structures.
+
+For array reference following arguments can be specified:
+
+ $table_name
+ 
+ Any scalar without leading '-' means table name
+
+ -columns => \@columns
+ or
+ -columns => $column
+ \@columns is a reference to an array of SQL column specifications (i.e. column 
+ names, * or table.*, functions, etc.). '*' is by default.
+ 
+ -left => $table
+ left [OUTER] join
+
+ -right => $table
+ right [OUTER] join
+ 
+ -join => $table
+ [INNER] join
+ 
+ -on => $join_condition_string
+ on($join_condition_string)
+
+ -using => $join_condition_string
+ using($join_field_string)
+ 
+This module is smart enough to determine automatically table connections.
+
+ my $count = one_row([table => "count(*)"], 
+                      { date => {'>=', \"now() - interval '1 hour'"})
+                      ->count;
+
+ my $name = one_row([client => session => -columns => "name"],
+                      { session_key => $input->{session}})
+                      ->name;
 
 There are some named paramters can be used together with positional paramaters:
 
