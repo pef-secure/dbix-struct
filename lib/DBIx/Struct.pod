@@ -140,7 +140,7 @@ For array reference following arguments can be specified:
 
  $table_name
  
- Any scalar without leading '-' means table name
+Any scalar without leading '-' means table name
 
  -columns => \@columns
 
