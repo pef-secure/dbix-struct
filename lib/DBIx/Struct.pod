@@ -143,31 +143,31 @@ For array reference following arguments can be specified:
  Any scalar without leading '-' means table name
 
  -columns => \@columns
- or
+or
  -columns => $column
- \@columns is a reference to an array of SQL column specifications (i.e. column 
- names, * or table.*, functions, etc.). '*' is by default.
+\@columns is a reference to an array of SQL column specifications (i.e. column 
+names, * or table.*, functions, etc.). '*' is by default.
  
  -left => $table
- left [OUTER] join
+left [OUTER] join
 
  -right => $table
- right [OUTER] join
+right [OUTER] join
  
  -join => $table
- [INNER] join
+[INNER] join
  
  -on => $join_condition_string
- on($join_condition_string)
+on($join_condition_string)
 
  -using => $join_condition_string
- using($join_field_string)
+using($join_field_string)
  
-This module is smart enough to determine automatically table connections.
-
  my $count = one_row([table => "count(*)"], 
                       { date => {'>=', \"now() - interval '1 hour'"})
                       ->count;
+
+This module is smart enough to determine automatically table connections.
 
  my $name = one_row([client => session => -columns => "name"],
                       { session_key => $input->{session}})
