@@ -203,7 +203,7 @@ sub connector {
 sub _not_yet_connected {
 	if (not $conn) {
 		my ($dsn, $user, $password) = @_;
-		if ($dsn && $dsn !~ /^dbi:/) {
+		if ($dsn && $dsn !~ /^dbi:/i) {
 			$dsn = "dbi:Pg:dbname=$dsn";
 		}
 		my $connect_attrs = {
@@ -213,7 +213,7 @@ sub _not_yet_connected {
 			RaiseError          => 0,
 		};
 		if ($dsn) {
-			my ($driver) = $dsn =~ /^dbi:([^:]+):/;
+			my ($driver) = $dsn =~ /^dbi:([^:]+):/i;
 			if ($driver) {
 				if ($driver eq 'Pg') {
 					$connect_attrs->{pg_enable_utf8} = 1;
