@@ -1,6 +1,6 @@
 use lib qw'../lib lib t';
 use TestConnector;
-use DBIx::Struct (connector => 'TestConnector');
+use DBIx::Struct (connector_module => 'TestConnector');
 use Test::More;
 
 my ($query, $bind);
