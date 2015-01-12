@@ -901,10 +901,10 @@ sub _build_complex_query {
 				$from[-1][_table_join] = 'join';
 			} elsif ($cmd eq 'on') {
 				my ($on) = splice @linked_list, $i + 1, 1;
-				$from[-1][_table_join_on] = $on;
+				$from[-1][_table_join_on] = ["on", $on];
 			} elsif ($cmd eq 'using') {
 				my ($using) = splice @linked_list, $i + 1, 1;
-				$from[-1][_table_join_on] = $using;
+				$from[-1][_table_join_on] = ["using", $using];
 			} elsif ($cmd eq 'columns') {
 				my ($cols) = splice @linked_list, $i + 1, 1;
 				if (ref ($cols)) {
@@ -942,7 +942,7 @@ sub _build_complex_query {
 				}
 			}
 		}
-		$from[$idx][_table_join_on] = join (" and ", @join);
+		$from[$idx][_table_join_on] = ["on", join (" and ", @join)];
 	}
 	my $from = '';
 	@columns = ('*') if not @columns;
@@ -957,7 +957,8 @@ sub _build_complex_query {
 			$from .= " " . $from[$idx][_table_join];
 			$from .= " " . $nt->[_table_name];
 			$from .= " " . $nt->[_table_alias] if $nt->[_table_alias] ne $nt->[_table_name];
-			$from .= " on(" . $nt->[_table_join_on] . ")";
+			my $using_on = $nt->[_table_join_on][0];
+			$from .= " $using_on(" . $nt->[_table_join_on][1] . ")";
 			$joined = 1;
 		} else {
 			$from .= "," if $idx != $#from;
