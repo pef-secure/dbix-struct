@@ -10,7 +10,7 @@ sub _connect {
 	for my $try (1 .. $db_reconnect_timeout) {
 		my $dbh = eval { $self->SUPER::_connect(@args) };
 		return $dbh if $dbh;
-		sleep 1 if $try ne $db_reconnect_timeout;
+		sleep 1 if $try != $db_reconnect_timeout;
 	}
 	die $@ if $@;
 	die "DB connect error";
