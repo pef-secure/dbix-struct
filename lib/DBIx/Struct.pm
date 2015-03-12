@@ -1014,10 +1014,10 @@ sub _build_complex_query {
 		}
 		my ($code, $table, $conditions, $order, $limit, $offset) = @_;
 		my $have_conditions = @_ > 2;
-		$conditions ||= $up_conditions;
-		$order      ||= $up_order;
-		$limit      ||= $up_limit;
-		$offset     ||= $up_offset;
+		$conditions //= $up_conditions;
+		$order      //= $up_order;
+		$limit      //= $up_limit;
+		$offset     //= $up_offset;
 		my $where;
 		my @bind;
 		my $simple_table = (not ref $table and index ($table, " ") == -1);
