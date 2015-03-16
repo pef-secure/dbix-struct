@@ -213,7 +213,7 @@ sub _not_yet_connected {
 			RaiseError          => 0,
 		};
 		if ($dsn) {
-			my $driver = $1 if $dsn =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i;
+			my ($driver) = $dsn =~ /^dbi:(\w*?)(?:\((.*?)\))?:/i;
 			if ($driver) {
 				if ($driver eq 'Pg') {
 					$connect_attrs->{pg_enable_utf8} = 1;
