@@ -45,7 +45,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.10;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 our @EXPORT = qw{
   one_row
@@ -213,7 +213,7 @@ sub _not_yet_connected {
 			RaiseError          => 0,
 		};
 		if ($dsn) {
-			my ($driver) = $dsn =~ /^dbi:([^:]+):/i;
+			my $driver = $1 if $dsn =~ s/^dbi:(\w*?)(?:\((.*?)\))?://i;
 			if ($driver) {
 				if ($driver eq 'Pg') {
 					$connect_attrs->{pg_enable_utf8} = 1;
@@ -232,6 +232,7 @@ sub _not_yet_connected {
 		  };
 		$conn->mode('fixup');
 	}
+	'' =~ /()/;
 	$connector_driver = $conn->driver->{driver};
 	no warnings 'redefine';
 	*connect = \&connector;
@@ -363,6 +364,7 @@ sub make_object_filter_timestamp {
 					\$self->[@{[_row_data]}][\$fields{\$f}] =~ s/\\.\\d+\$// if \$self->[@{[_row_data]}][\$fields{\$f}];
 				}
 			}
+			'' =~ /()/;
 			\$self;
 		}
 FTS
@@ -850,6 +852,7 @@ DESTROY
 	  $references_tables;
 	#print $eval_code;
 	eval $eval_code;
+	'' =~ /()/;
 	return $ncn;
 }
 
@@ -867,8 +870,10 @@ sub _table_alias()   { 1 }
 sub _table_join()    { 2 }
 sub _table_join_on() { 3 }
 
+my $sql_abstract = SQL::Abstract->new;
+
 sub _build_complex_query {
-	my $table = $_[0];
+	my ($table, $query_bind) = @_;
 	return $table if not ref $table;
 	my @from;
 	my @columns;
@@ -958,7 +963,14 @@ sub _build_complex_query {
 			$from .= " " . $nt->[_table_name];
 			$from .= " " . $nt->[_table_alias] if $nt->[_table_alias] ne $nt->[_table_name];
 			my $using_on = $nt->[_table_join_on][0];
-			$from .= " $using_on(" . $nt->[_table_join_on][1] . ")";
+			if ($using_on eq 'on' and ref $nt->[_table_join_on][1]) {
+				my ($on_where, @on_bind) = $sql_abstract->where($nt->[_table_join_on][1]);
+				$on_where =~ s/^WHERE //;
+				push @$query_bind, @on_bind;
+				$from .= " $using_on(" . $on_where . ")";
+			} else {
+				$from .= " $using_on(" . $nt->[_table_join_on][1] . ")";
+			}
 			$joined = 1;
 		} else {
 			$from .= "," if $idx != $#from;
@@ -968,123 +980,132 @@ sub _build_complex_query {
 	return "select " . join (", ", @columns) . " from" . $from;
 }
 
-{
-	my $sql_abstract = SQL::Abstract->new;
-
-	sub execute {
-		my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset);
-		for (my $i = 2 ; $i < @_ ; ++$i) {
-			next unless defined $_[$i] and not ref $_[$i];
-			if ($_[$i] eq '-group_by') {
-				(undef, $groupby) = splice @_, $i, 2;
-				--$i;
-			} elsif ($_[$i] eq '-having') {
-				(undef, $having) = splice @_, $i, 2;
-				--$i;
-			} elsif ($_[$i] eq '-order_by') {
-				(undef, $up_order) = splice @_, $i, 2;
-				--$i;
-			} elsif ($_[$i] eq '-where') {
-				(undef, $up_conditions) = splice @_, $i, 2;
-				--$i;
-			} elsif ($_[$i] eq '-limit') {
-				(undef, $up_limit) = splice @_, $i, 2;
-				--$i;
-			} elsif ($_[$i] eq '-offset') {
-				(undef, $up_offset) = splice @_, $i, 2;
-				--$i;
-			}
+sub execute {
+	my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset);
+	for (my $i = 2 ; $i < @_ ; ++$i) {
+		next unless defined $_[$i] and not ref $_[$i];
+		if ($_[$i] eq '-group_by') {
+			(undef, $groupby) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-having') {
+			(undef, $having) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-order_by') {
+			(undef, $up_order) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-where') {
+			(undef, $up_conditions) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-limit') {
+			(undef, $up_limit) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-offset') {
+			(undef, $up_offset) = splice @_, $i, 2;
+			--$i;
 		}
-		my $sql_grp;
-		my @having_bind;
-		if (defined $groupby) {
-			$sql_grp = "GROUP BY ";
-			if (ref $groupby) {
-				$sql_grp .= '"' . join ('", "', @$groupby) . '"';
-			} else {
-				$sql_grp .= '"' . $groupby . '"';
-			}
-			if (defined $having) {
-				my $sql_having;
-				($sql_having, @having_bind) = $sql_abstract->where($having);
-				$sql_having =~ s/\bWHERE\b/HAVING/;
-				$sql_grp .= " $sql_having";
-
-			}
-		}
-		my ($code, $table, $conditions, $order, $limit, $offset) = @_;
-		my $have_conditions = @_ > 2;
-		$conditions //= $up_conditions;
-		$order      //= $up_order;
-		$limit      //= $up_limit;
-		$offset     //= $up_offset;
-		my $where;
-		my @bind;
-		my $simple_table = (not ref $table and index ($table, " ") == -1);
-		my $ncn;
-		if ($simple_table) {
-			$ncn = make_name($table);
-			setup_row($table);
-			if ($have_conditions and not ref $conditions) {
-				my $id = ($ncn->selectKeys())[0]
-				  or error_message {
-					result  => 'SQLERR',
-					message => "unknown primary key",
-					query   => "select * from $table",
-				  };
-				if (defined $conditions) {
-					$where = "where $id = ?";
-					@bind  = ($conditions);
-				} else {
-					$where = "where $id is null";
-				}
-			} else {
-				($where, @bind) = $sql_abstract->where($conditions, $order);
-			}
-		} else {
-			($where, @bind) = $sql_abstract->where($conditions, $order);
-		}
-		if (defined $sql_grp) {
-			$where .= " $sql_grp";
-			push @bind, @having_bind;
-		}
-		if (defined ($limit)) {
-			$limit += 0;
-			$where .= " limit $limit" if $limit;
-		}
-		if (defined ($offset)) {
-			$offset += 0;
-			$where .= " offset $offset" if $offset;
-		}
-		my $query;
-		if ($simple_table) {
-			$query = qq{select * from $table $where};
-		} else {
-			$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table) . " $where";
-			$ncn = make_name($query);
-		}
-		my $sth;
-		return DBIx::Struct::connect->run(
-			sub {
-				$sth = $_->prepare($query)
-				  or error_message {
-					result  => 'SQLERR',
-					message => $_->errstr,
-					query   => $query,
-				  };
-				$sth->execute(@bind)
-				  or error_message {
-					result     => 'SQLERR',
-					message    => $_->errstr,
-					query      => $query,
-					bind       => Dumper(\@bind),
-					conditions => Dumper($conditions),
-				  };
-				setup_row($sth, $ncn);
-				return $code->($sth, $ncn);
-			}
-		);
 	}
+	my $sql_grp;
+	my @having_bind;
+	if (defined $groupby) {
+		$sql_grp = "GROUP BY ";
+		if (ref $groupby) {
+			$sql_grp .= '"' . join ('", "', @$groupby) . '"';
+		} else {
+			$sql_grp .= '"' . $groupby . '"';
+		}
+		if (defined $having) {
+			my $sql_having;
+			($sql_having, @having_bind) = $sql_abstract->where($having);
+			$sql_having =~ s/\bWHERE\b/HAVING/;
+			$sql_grp .= " $sql_having";
+		}
+	}
+	my ($code, $table, $conditions, $order, $limit, $offset) = @_;
+	my $have_conditions = @_ > 2;
+	$conditions //= $up_conditions;
+	$order      //= $up_order;
+	$limit      //= $up_limit;
+	$offset     //= $up_offset;
+	my $where;
+	my @where_bind;
+	my $simple_table = (not ref $table and index ($table, " ") == -1);
+	my $ncn;
+	if ($simple_table) {
+		$ncn = make_name($table);
+		setup_row($table);
+		if ($have_conditions and not ref $conditions) {
+			my $id = ($ncn->selectKeys())[0]
+			  or error_message {
+				result  => 'SQLERR',
+				message => "unknown primary key",
+				query   => "select * from $table",
+			  };
+			if (defined $conditions) {
+				$where      = "where $id = ?";
+				@where_bind = ($conditions);
+			} else {
+				$where = "where $id is null";
+			}
+		} else {
+			($where, @where_bind) = $sql_abstract->where($conditions, $order);
+		}
+	} else {
+		($where, @where_bind) = $sql_abstract->where($conditions, $order);
+	}
+	if (defined $sql_grp) {
+		$where .= " $sql_grp";
+		push @where_bind, @having_bind;
+	}
+	if (defined ($limit)) {
+		$limit += 0;
+		$where .= " limit $limit" if $limit;
+	}
+	if (defined ($offset)) {
+		$offset += 0;
+		$where .= " offset $offset" if $offset;
+	}
+	my $query;
+	my @query_bind;
+	if ($simple_table) {
+		$query = qq{select * from $table $where};
+	} else {
+		$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table, \@query_bind) . " $where";
+		$ncn = make_name($query);
+	}
+	{
+		no strict 'refs';
+		if (!"$ncn"->can("dumpSQL")) {
+			*{$ncn . "::dumpSQL"} = sub { $query };
+			if (@query_bind) {
+				*{$ncn . "::needQueryBind"} = sub { 1 };
+			} else {
+				*{$ncn . "::needQueryBind"} = sub { 0 };
+			}
+		}
+	}
+	'' =~ /()/;
+	my $sth;
+	return DBIx::Struct::connect->run(
+		sub {
+			$sth = $_->prepare($query)
+			  or error_message {
+				result  => 'SQLERR',
+				message => $_->errstr,
+				query   => $query,
+			  };
+			$sth->execute(@query_bind, @where_bind)
+			  or error_message {
+				result     => 'SQLERR',
+				message    => $_->errstr,
+				query      => $query,
+				where_bind => Dumper(\@where_bind),
+				query_bind => Dumper(\@query_bind),
+				conditions => Dumper($conditions),
+			  };
+			setup_row($sth, $ncn);
+			return $code->($sth, $ncn);
+		}
+	);
 }
 
 sub one_row {
