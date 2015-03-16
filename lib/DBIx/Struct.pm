@@ -1072,17 +1072,6 @@ sub execute {
 		$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table, \@query_bind) . " $where";
 		$ncn = make_name($query);
 	}
-	{
-		no strict 'refs';
-		if (!"$ncn"->can("dumpSQL")) {
-			*{$ncn . "::dumpSQL"} = sub { $query };
-			if (@query_bind) {
-				*{$ncn . "::needQueryBind"} = sub { 1 };
-			} else {
-				*{$ncn . "::needQueryBind"} = sub { 0 };
-			}
-		}
-	}
 	'' =~ /()/;
 	my $sth;
 	return DBIx::Struct::connect->run(
@@ -1103,6 +1092,15 @@ sub execute {
 				conditions => Dumper($conditions),
 			  };
 			setup_row($sth, $ncn);
+			no strict 'refs';
+			if (!"$ncn"->can("dumpSQL")) {
+				*{$ncn . "::dumpSQL"} = sub { $query };
+				if (@query_bind) {
+					*{$ncn . "::needQueryBind"} = sub { 1 };
+				} else {
+					*{$ncn . "::needQueryBind"} = sub { 0 };
+				}
+			}
 			return $code->($sth, $ncn);
 		}
 	);
