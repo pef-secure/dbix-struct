@@ -965,7 +965,7 @@ sub _build_complex_query {
 			my $using_on = $nt->[_table_join_on][0];
 			if ($using_on eq 'on' and ref $nt->[_table_join_on][1]) {
 				my ($on_where, @on_bind) = $sql_abstract->where($nt->[_table_join_on][1]);
-				$on_where =~ s/^WHERE //;
+				$on_where =~ s/WHERE //;
 				push @$query_bind, @on_bind;
 				$from .= " $using_on(" . $on_where . ")";
 			} else {
