@@ -25,7 +25,7 @@ DBIx::Struct - convenience SQL functions with Class::Struct-like row objects
 Makes SQL queries from Perl data structures. It uses L<SQL::Abstract> module to 
 parse "where" and "order by" structures. It also supports "group by", "having", 
 "limit", "offset" and mapping function. To make actual queries subclass of 
-L<DBIx::Connector> is used. The main pupose of this module is to provide a very 
+L<DBIx::Connector> is used. The main purpose of this module is to provide a very 
 easy, simple and efficient interface to database. Internally every row is just 
 an array of values and every accessor knows its offset in that array. This is 
 much more efficient as storing row in hash.
@@ -124,7 +124,7 @@ is the same as
 =head3 C<connect($data_source, $username, $auth)>
 
 This method connects to database or returns already connected connector object.
-For every table in database there's one corresponding class in DBC:: namespaece 
+For every table in database there's one corresponding class in DBC:: namespace 
 in CamelCase style after successful connect created. E.g. DBC::ClientData is 
 created for table "client_data". This namespace is configurable.
 
