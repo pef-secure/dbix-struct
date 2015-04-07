@@ -1027,6 +1027,7 @@ sub execute {
 	$limit      //= $up_limit;
 	$offset     //= $up_offset;
 	my $where;
+	my $need_where = 0;
 	my @where_bind;
 	my $simple_table = (not ref $table and index ($table, " ") == -1);
 	my $ncn;
@@ -1047,14 +1048,22 @@ sub execute {
 				$where = "where $id is null";
 			}
 		} else {
-			($where, @where_bind) = $sql_abstract->where($conditions, $order);
+			$need_where = 1;
 		}
 	} else {
-		($where, @where_bind) = $sql_abstract->where($conditions, $order);
+		$need_where = 1;
+	}
+	if ($need_where) {
+		($where, @where_bind) = $sql_abstract->where($conditions);
 	}
 	if (defined $sql_grp) {
 		$where .= " $sql_grp";
 		push @where_bind, @having_bind;
+	}
+	if ($order) {
+		my ($order_sql, @order_bind) = $sql_abstract->where(undef, $order);
+		$where .= " $order_sql";
+		push @where_bind, @order_bind;
 	}
 	if (defined ($limit)) {
 		$limit += 0;
