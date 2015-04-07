@@ -1008,11 +1008,8 @@ sub execute {
 	my @having_bind;
 	if (defined $groupby) {
 		$sql_grp = "GROUP BY ";
-		if (ref $groupby) {
-			$sql_grp .= '"' . join ('", "', @$groupby) . '"';
-		} else {
-			$sql_grp .= '"' . $groupby . '"';
-		}
+		my @groupby = map { /^\d+$/ ? $_ : qq{"$_"} } (ref ($groupby) ? @$groupby : ($groupby));
+		$sql_grp .= join (", ", @groupby);
 		if (defined $having) {
 			my $sql_having;
 			($sql_having, @having_bind) = $sql_abstract->where($having);
