@@ -871,9 +871,10 @@ sub _table_join()    { 2 }
 sub _table_join_on() { 3 }
 
 my $sql_abstract = SQL::Abstract->new;
+my $tblnum;
 
 sub _build_complex_query {
-	my ($table, $query_bind) = @_;
+	my ($table, $query_bind, $where) = @_;
 	return $table if not ref $table;
 	my @from;
 	my @columns;
@@ -885,8 +886,16 @@ sub _build_complex_query {
 			message => "Unsupported type of query: " . ref ($table)
 		}
 	);
+	my ($conditions, $groupby, $having, $limit, $offset);
 	for (my $i = 0 ; $i < @linked_list ; ++$i) {
 		my $le = $linked_list[$i];
+		if ('ARRAY' eq ref $le) {
+			my $subfrom = _build_complex_query($le, $query_bind);
+			my $ta = "t$tblnum";
+			++$tblnum;
+			push @from, ["($subfrom)", $ta];
+			next;
+		}
 		if (substr ($le, 0, 1) ne '-') {
 			my ($tn, $ta) = split ' ', $le;
 			$ta = $tn if not $ta;
@@ -910,6 +919,20 @@ sub _build_complex_query {
 			} elsif ($cmd eq 'using') {
 				my ($using) = splice @linked_list, $i + 1, 1;
 				$from[-1][_table_join_on] = ["using", $using];
+			} elsif ($cmd eq 'as') {
+				($from[-1][_table_alias]) = splice @linked_list, $i + 1, 1;
+			} elsif ($cmd eq 'where') {
+				($conditions) = splice @linked_list, $i + 1, 1;
+			} elsif ($cmd eq 'group_by') {
+				($groupby) = splice @linked_list, $i + 1, 1;
+			} elsif ($cmd eq 'having') {
+				($having) = splice @linked_list, $i + 1, 1;
+			} elsif ($cmd eq 'limit') {
+				($limit) = splice @linked_list, $i + 1, 1;
+				$limit += 0;
+			} elsif ($cmd eq 'offset') {
+				($offset) = splice @linked_list, $i + 1, 1;
+				$offset += 0;
 			} elsif ($cmd eq 'columns') {
 				my ($cols) = splice @linked_list, $i + 1, 1;
 				if (ref ($cols)) {
@@ -926,13 +949,15 @@ sub _build_complex_query {
 	} if !@from;
 	for (my $idx = 1 ; $idx < @from ; ++$idx) {
 		next if $from[$idx][_table_join_on] or not $from[$idx - 1][_table_join];
+		next if substr ($from[$idx][_table_name], 0, 1) eq "(";
 		my $cta  = $from[$idx][_table_alias];
 		my $cto  = make_name($from[$idx][_table_name]);
 		my $ucct = ucfirst $from[$idx][_table_name];
 		my @join;
 		for (my $i = $idx - 1 ; $i >= 0 ; --$i) {
 			next if not $from[$i][_table_join];
-			my $ptn    = $from[$i][_table_name];
+			my $ptn = $from[$i][_table_name];
+			next if substr ($ptn, 0, 1) eq "(";
 			my $ucfptn = ucfirst $ptn;
 			if ($cto->can("foreignKey$ucfptn")) {
 				my $fkfn = "foreignKey$ucfptn";
@@ -977,7 +1002,53 @@ sub _build_complex_query {
 			$joined = 0;
 		}
 	}
-	return "select " . join (", ", @columns) . " from" . $from;
+	my $ret = "select " . join (", ", @columns) . " from" . $from;
+	if (not defiend $where) {
+		my $sql_grp     = _parse_groupby($groupby);
+		my $having_bind = [];
+		if ($sql_grp && defined $having) {
+			my $sql_having;
+			($sql_having, $having_bind) = _parse_having($having);
+			$sql_grp .= " $sql_having";
+		}
+		if ($conditions) {
+			my @where_bind;
+			($where, @where_bind) = $sql_abstract->where($conditions);
+			push @$query_bind, @where_bind;
+		} else {
+			$where = '';
+		}
+		if (defined $sql_grp) {
+			$where .= " $sql_grp";
+			push @$query_bind, @$having_bind;
+		}
+		$where .= " limit $limit"   if $limit;
+		$where .= " offset $offset" if $offset;
+	}
+	$ret .= " $where" if $where;
+	$ret;
+}
+
+sub _parse_groupby {
+	my $groupby = $_[0];
+	my $sql_grp;
+	if (defined $groupby) {
+		$sql_grp = "GROUP BY ";
+		my @groupby = map { /^\d+$/ ? $_ : qq{"$_"} } (ref ($groupby) ? @$groupby : ($groupby));
+		$sql_grp .= join (", ", @groupby);
+	}
+	$sql_grp;
+}
+
+sub _parse_having {
+	my $having = $_[0];
+	my $sql_having;
+	my @having_bind;
+	if (defined $having) {
+		($sql_having, @having_bind) = $sql_abstract->where($having);
+		$sql_having =~ s/\bWHERE\b/HAVING/;
+	}
+	($sql_having, \@having_bind);
 }
 
 sub execute {
@@ -1004,18 +1075,13 @@ sub execute {
 			--$i;
 		}
 	}
-	my $sql_grp;
-	my @having_bind;
-	if (defined $groupby) {
-		$sql_grp = "GROUP BY ";
-		my @groupby = map { /^\d+$/ ? $_ : qq{"$_"} } (ref ($groupby) ? @$groupby : ($groupby));
-		$sql_grp .= join (", ", @groupby);
-		if (defined $having) {
-			my $sql_having;
-			($sql_having, @having_bind) = $sql_abstract->where($having);
-			$sql_having =~ s/\bWHERE\b/HAVING/;
-			$sql_grp .= " $sql_having";
-		}
+	$tblnum = 1;
+	my $sql_grp     = _parse_groupby($groupby);
+	my $having_bind = [];
+	if ($sql_grp && defined $having) {
+		my $sql_having;
+		($sql_having, $having_bind) = _parse_having($having);
+		$sql_grp .= " $sql_having";
 	}
 	my ($code, $table, $conditions, $order, $limit, $offset) = @_;
 	my $have_conditions = @_ > 2;
@@ -1055,7 +1121,7 @@ sub execute {
 	}
 	if (defined $sql_grp) {
 		$where .= " $sql_grp";
-		push @where_bind, @having_bind;
+		push @where_bind, @$having_bind;
 	}
 	if ($order) {
 		my ($order_sql, @order_bind) = $sql_abstract->where(undef, $order);
@@ -1075,7 +1141,7 @@ sub execute {
 	if ($simple_table) {
 		$query = qq{select * from $table $where};
 	} else {
-		$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table, \@query_bind) . " $where";
+		$query = (not ref $table) ? qq{$table $where} : _build_complex_query($table, \@query_bind, $where);
 		$ncn = make_name($query);
 	}
 	'' =~ /()/;
