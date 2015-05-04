@@ -1003,7 +1003,7 @@ sub _build_complex_query {
 		}
 	}
 	my $ret = "select " . join (", ", @columns) . " from" . $from;
-	if (not defiend $where) {
+	if (not defined $where) {
 		my $sql_grp     = _parse_groupby($groupby);
 		my $having_bind = [];
 		if ($sql_grp && defined $having) {
