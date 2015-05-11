@@ -649,9 +649,11 @@ sub setup_row {
 				if (!@pkeys && @required) {
 					my $ukh = $_->statistics_info(undef, undef, $table, 1, 1);
 					my %req = map { $_ => undef } @required;
+					my %pkeys;
 					while (my $ukr = $ukh->fetchrow_hashref) {
-						push @pkeys, $ukr->{COLUMN_NAME} if exists $req{$ukr->{COLUMN_NAME}};
+						$pkeys{$ukr->{COLUMN_NAME}} = undef if exists $req{$ukr->{COLUMN_NAME}};
 					}
+					@pkeys = keys %pkeys;
 				}
 				my $sth = $_->foreign_key_info(undef, undef, undef, undef, undef, $table);
 				if ($sth) {
