@@ -1022,7 +1022,7 @@ sub _build_complex_query {
 			$where .= " $sql_grp";
 			push @$query_bind, @$having_bind;
 		}
-		$where .= " limit $limit"   if $limit;
+		$where .= " limit $limit"   if defined $limit;
 		$where .= " offset $offset" if $offset;
 	}
 	$ret .= " $where" if $where;
@@ -1130,7 +1130,7 @@ sub execute {
 	}
 	if (defined ($limit)) {
 		$limit += 0;
-		$where .= " limit $limit" if $limit;
+		$where .= " limit $limit";
 	}
 	if (defined ($offset)) {
 		$offset += 0;
