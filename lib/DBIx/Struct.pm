@@ -285,7 +285,7 @@ sub make_object_new {
 		sub new {
 			my \$class = \$_[0];
 			my \$self = [ [] ];
-			if(CORE::defined(\$_[1]) && ref(\$_[1]) eq 'ARRAY') {
+			if(CORE::defined(\$_[1]) && CORE::ref(\$_[1]) eq 'ARRAY') {
 				\$self->[@{[_row_data]}] = \$_[1];
 			}
 NEW
@@ -319,7 +319,7 @@ NEW
 							CORE::push \@values, "?";
 							"\$_" 
 						}						
-					} keys \%insert;
+					} CORE::keys \%insert;
 				my \$insert = "insert into $table (" . CORE::join( ", ", \@insert) . ") values ("
 					.  CORE::join( ", ", \@values) . ")";
 NEW
@@ -376,17 +376,17 @@ sub make_object_set {
 		sub set {
 			my \$self = \$_[0];
 			if(CORE::defined(\$_[1])) {
-				if(ref(\$_[1]) eq 'ARRAY') {
+				if(CORE::ref(\$_[1]) eq 'ARRAY') {
 					\$self->[@{[_row_data]}] = \$_[1];
 					\$self->[@{[_row_updates]}] = {};
-				} elsif(ref(\$_[1]) eq 'HASH') {
-					for my \$f (keys \%{\$_[1]}) {
+				} elsif(CORE::ref(\$_[1]) eq 'HASH') {
+					for my \$f (CORE::keys \%{\$_[1]}) {
 						if (CORE::exists \$fields{\$_[\$f]}) {
 							\$self->[@{[_row_data]}]->[\$fields{\$f}] = \$_[1]->{\$f};
 							\$self->[@{[_row_updates]}]{\$f} = undef;
 						}
 					}
-				} elsif(not ref(\$_[1])) {
+				} elsif(not CORE::ref(\$_[1])) {
 					for(my \$i = 1; \$i < \@_; \$i += 2) {
 						if (CORE::exists \$fields{\$_[\$i]}) {
 							\$self->[@{[_row_data]}]->[\$fields{\$_[\$i]}] = \$_[\$i + 1];
@@ -437,12 +437,12 @@ sub make_object_update {
 		$update = <<UPD;
 		sub update {
 			my \$self = \$_[0];
-			if(\@_ > 1 && ref(\$_[1]) eq 'HASH') {
+			if(\@_ > 1 && CORE::ref(\$_[1]) eq 'HASH') {
 				my (\$set, \$where, \@bind, \@bind_where);
 				{
 					no strict 'vars';
 					local *set_hash = \$_[1];
-					my \@unknown_columns = CORE::grep {not CORE::exists \$fields{\$_}} keys %set_hash;
+					my \@unknown_columns = CORE::grep {not CORE::exists \$fields{\$_}} CORE::keys %set_hash;
 					DBIx::Struct::error_message {
 							result  => 'SQLERR',
 							message => 'unknown columns '.CORE::join(", ", \@unknown_columns).' updating table $table'
@@ -459,7 +459,7 @@ sub make_object_update {
 								CORE::push \@bind, \$set_hash{\$_};
 								"\$_ = ?" 
 							}						
-						} keys \%set_hash;
+						} CORE::keys \%set_hash;
 				}
 				if(\@_ > 2) {
 					my \$cond = \$_[2];
@@ -492,7 +492,7 @@ sub make_object_update {
 								CORE::push \@bind, \$column_value;
 								"\$_ = ?" 
 							}						
-						} keys \%{\$self->[@{[_row_updates]}]};
+						} CORE::keys \%{\$self->[@{[_row_updates]}]};
 				}
 				my \$update_query = qq{update $table set \$set where $pk_where};
 				DBIx::Struct::connect->run(
@@ -571,7 +571,7 @@ sub make_object_fetch {
 			if(\@_ > 1) {
 				my (\$where, \@bind);
 				my \$cond = \$_[1];
-				if(not ref(\$cond)) {
+				if(not CORE::ref(\$cond)) {
 					\$cond = {(selectKeys)[0] => \$_[1]};
 				}
 				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
