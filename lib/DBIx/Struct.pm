@@ -494,12 +494,15 @@ sub make_object_update {
 							}						
 						} keys \%{\$self->[@{[_row_updates]}]};
 				}
+				my \$update_query = qq{update $table set \$set where $pk_where};
 				DBIx::Struct::connect->run(
 					sub {
-						\$_->do(qq{update $table set \$set where $pk_where}, undef, \@bind, $pk_row_data)
+						\$_->do(\$update_query, undef, \@bind, $pk_row_data)
 						or DBIx::Struct::error_message {
 							result  => 'SQLERR',
-							message => 'error '.\$_->errstr.' updating table $table'
+							message => 'error '.\$_->errstr.' updating table $table',
+							query   => \$update_query,
+							bind    => \\\@bind,
 						}
 					}
 				);
