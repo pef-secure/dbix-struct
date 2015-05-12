@@ -660,7 +660,8 @@ sub setup_row {
 					my @d = grep { exists $pkeys{$_}{drop} } keys %pkeys;
 					delete $pkeys{$_} for @d;
 					if (%pkeys) {
-						my @spk = sort { scalar (%{$pkeys{$a}{fields}}) <=> scalar (%{$pkeys{$b}{fields}}) } keys %pkeys;
+						my @spk = sort { scalar (keys %{$pkeys{$a}{fields}}) <=> scalar (keys %{$pkeys{$b}{fields}}) }
+						  keys %pkeys;
 						@pkeys = keys %{$pkeys{$spk[0]}{fields}};
 					}
 				}
