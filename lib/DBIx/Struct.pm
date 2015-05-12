@@ -651,9 +651,18 @@ sub setup_row {
 					my %req = map { $_ => undef } @required;
 					my %pkeys;
 					while (my $ukr = $ukh->fetchrow_hashref) {
-						$pkeys{$ukr->{COLUMN_NAME}} = undef if exists $req{$ukr->{COLUMN_NAME}};
+						if (not exists $req{$ukr->{COLUMN_NAME}} or defined $ukr->{FILTER_CONDITION}) {
+							$pkeys{$ukr->{INDEX_NAME}}{drop} = 1;
+						} else {
+							$pkeys{$ukr->{INDEX_NAME}}{fields} = $ukr->{COLUMN_NAME};
+						}
 					}
-					@pkeys = keys %pkeys;
+					my @d = grep { exists $pkeys{$_}{drop} } keys %pkeys;
+					delete $pkeys{$_} for @d;
+					if (%pkeys) {
+						my @spk = sort { scalar (%{$pkeys{$a}{fields}}) <=> scalar (%{$pkeys{$b}{fields}}) } keys %pkeys;
+						@pkeys = keys %{$pkeys{$spk[0]}{fields}};
+					}
 				}
 				my $sth = $_->foreign_key_info(undef, undef, undef, undef, undef, $table);
 				if ($sth) {
