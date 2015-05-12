@@ -654,7 +654,7 @@ sub setup_row {
 						if (not exists $req{$ukr->{COLUMN_NAME}} or defined $ukr->{FILTER_CONDITION}) {
 							$pkeys{$ukr->{INDEX_NAME}}{drop} = 1;
 						} else {
-							$pkeys{$ukr->{INDEX_NAME}}{fields} = $ukr->{COLUMN_NAME};
+							$pkeys{$ukr->{INDEX_NAME}}{fields}{$ukr->{COLUMN_NAME}} = undef;
 						}
 					}
 					my @d = grep { exists $pkeys{$_}{drop} } keys %pkeys;
