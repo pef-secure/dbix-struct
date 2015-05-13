@@ -603,8 +603,69 @@ FETCH
 	$fetch;
 }
 
+sub _exists_row ($) {
+	my $ncn = $_[0];
+	no strict "refs";
+	if (grep { !/::$/ } keys %{"${ncn}::"}) {
+		return 1;
+	}
+	return;
+}
+
+sub _parse_interface ($) {
+	my $interface = $_[0];
+	my %ret;
+	$interface = [$interface] if not ref $interface;
+	if ('ARRAY' eq ref $interface) {
+		for my $i (@$interface) {
+			my $dbc_name = make_name($i);
+			error_message {
+				result  => 'SQLERR',
+				message => "Unknown base interface table $i",
+			  }
+			  unless _exists_row $dbc_name;
+			no strict 'refs';
+			my $href = \%{"${dbc_name}::fkfuncs"};
+			if ($href && %$href) {
+				my @i = keys %$href;
+				@ret{@i} = @{$href}{@i};
+			}
+		}
+	} elsif ('HASH' eq ref $interface) {
+		for my $i (keys %$interface) {
+			my $dbc_name = make_name($i);
+			error_message {
+				result  => 'SQLERR',
+				message => "Unknown base interface table $i",
+			  }
+			  unless _exists_row $dbc_name;
+			no strict 'refs';
+			my $href = \%{"${dbc_name}::fkfuncs"};
+			next if not $href or not %$href;
+			my $fl = $interface->{$i};
+			$fl = [$fl] if not ref $fl;
+			if ('ARRAY' eq ref $fl) {
+				for my $m (@$fl) {
+					$ret{$m} = $href->{$m} if exists $href->{$m};
+				}
+			} else {
+				error_message {
+					result  => 'SQLERR',
+					message => "Usupported interface structure",
+				};
+			}
+		}
+	} else {
+		error_message {
+			result  => 'SQLERR',
+			message => "Unknown interface structure: " . ref ($interface),
+		};
+	}
+	\%ret;
+}
+
 sub setup_row {
-	my ($table, $ncn) = @_;
+	my ($table, $ncn, $interface) = @_;
 	my $conn = DBIx::Struct::connect;
 	error_message {
 		result  => 'SQLERR',
@@ -612,10 +673,7 @@ sub setup_row {
 	  }
 	  unless exists $driver_pk_insert{$connector_driver};
 	$ncn ||= make_name($table);
-	no strict "refs";
-	if (grep { !/::$/ } keys %{"${ncn}::"}) {
-		return $ncn;
-	}
+	return $ncn if _exists_row $ncn ;
 	my %fields;
 	my @fields;
 	my @timestamp_fields;
@@ -743,6 +801,7 @@ SK
 	}
 	my $foreign_tables = '';
 	my %foreign_tables;
+	my %fkfuncs;
 	for my $fk (@fkeys) {
 		$fk->{FK_COLUMN_NAME} =~ s/"//g;
 		my $fn = $fk->{FK_COLUMN_NAME};
@@ -752,6 +811,7 @@ SK
 		$fn =~ tr/-//d;
 		(my $pt = $fk->{PKTABLE_NAME}  || $fk->{UK_TABLE_NAME}) =~ s/"//g;
 		(my $pk = $fk->{PKCOLUMN_NAME} || $fk->{UK_COLUMN_NAME}) =~ s/"//g;
+		$fkfuncs{$fn} = undef;
 		$foreign_tables .= <<FKT;
 		sub $fn { 
 			if(CORE::defined(\$_[0]->$fk->{FK_COLUMN_NAME})) {
@@ -765,6 +825,7 @@ FKT
 	}
 	for my $ft (keys %foreign_tables) {
 		my $ucft = ucfirst $ft;
+		$fkfuncs{"foreignKey$ucft"} = undef;
 		$foreign_tables .= <<FKT;
 		sub foreignKey$ucft () {("$foreign_tables{$ft}[0]" => "$foreign_tables{$ft}[1]")}
 FKT
@@ -785,6 +846,8 @@ FKT
 		$ft =~ tr/_/-/;
 		$ft =~ s/\b(\w)/\u$1/g;
 		$ft =~ tr/-//d;
+		$fkfuncs{"ref${ft}s"} = undef;
+		$fkfuncs{"ref${ft}"}  = undef;
 		$references_tables .= <<RT;
 		sub ref${ft}s {
 			my (\$self, \@cond) = \@_;
@@ -846,6 +909,16 @@ ACC
 		our \%fields = ($fields);
 PHD
 	if (not ref $table) {
+		if (%fkfuncs) {
+			my $fkfuncs = join ",", map { qq{"$_" => \\&${ncn}::$_} } keys %fkfuncs;
+			$package_header .= <<PHD;
+		our \%fkfuncs = ($fkfuncs);
+PHD
+		} else {
+			$package_header .= <<PHD;
+		our \%fkfuncs = ();
+PHD
+		}
 		$package_header .= <<PHD;
 		our \$table_name = "$table";
 PHD
@@ -874,6 +947,17 @@ DESTROY
 	  $references_tables;
 	#print $eval_code;
 	eval $eval_code;
+	error_message {
+		result  => 'SQLERR',
+		message => "Unknown error: $@",
+	} if $@;
+	if ($interface) {
+		my $ifuncs = _parse_interface $interface;
+		no strict 'refs';
+		for my $f (keys %$ifuncs) {
+			*{"${ncn}::$f"} = $ifuncs->{$f};
+		}
+	}
 	'' =~ /()/;
 	return $ncn;
 }
@@ -1074,7 +1158,7 @@ sub _parse_having {
 }
 
 sub execute {
-	my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset);
+	my ($groupby, $having, $up_conditions, $up_order, $up_limit, $up_offset, $up_interface);
 	for (my $i = 2 ; $i < @_ ; ++$i) {
 		next unless defined $_[$i] and not ref $_[$i];
 		if ($_[$i] eq '-group_by') {
@@ -1091,6 +1175,9 @@ sub execute {
 			--$i;
 		} elsif ($_[$i] eq '-limit') {
 			(undef, $up_limit) = splice @_, $i, 2;
+			--$i;
+		} elsif ($_[$i] eq '-interface') {
+			(undef, $up_interface) = splice @_, $i, 2;
 			--$i;
 		} elsif ($_[$i] eq '-offset') {
 			(undef, $up_offset) = splice @_, $i, 2;
@@ -1185,7 +1272,7 @@ sub execute {
 				query_bind => Dumper(\@query_bind),
 				conditions => Dumper($conditions),
 			  };
-			setup_row($sth, $ncn);
+			setup_row($sth, $ncn, $up_interface);
 			no strict 'refs';
 			if (!"$ncn"->can("dumpSQL")) {
 				*{$ncn . "::dumpSQL"} = sub { $query };
