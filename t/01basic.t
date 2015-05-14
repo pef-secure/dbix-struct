@@ -92,5 +92,14 @@ my $count = one_row("select count(*) from list");
 ($query, $bind) = TestConnector::query();
 ok($query eq 'select count(*) from list ' && $bind eq "''",
 	'select count(*) function');
+one_row([list => -columns => 'count(*)']);
+($query, $bind) = TestConnector::query();
+is($query, 'select count(*) from list',
+	'count(*) generated query');
+one_row([list => -join => pl_assoc => -columns => 'count(*)']);
+($query, $bind) = TestConnector::query();
+is($query, 'select count(*) from list join pl_assoc on(pl_assoc.id_list = list.id)',
+	'complex auto join query');
 done_testing();
+
 

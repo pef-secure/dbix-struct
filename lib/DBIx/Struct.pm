@@ -962,15 +962,6 @@ DESTROY
 	return $ncn;
 }
 
-sub _populated_table {
-	my $ncn = $_[0];
-	no strict "refs";
-	if (grep { !/::$/ } keys %{"${ncn}::"}) {
-		return 1;
-	}
-	return;
-}
-
 sub _table_name()    { 0 }
 sub _table_alias()   { 1 }
 sub _table_join()    { 2 }
@@ -1009,7 +1000,7 @@ sub _build_complex_query {
 				result  => 'SQLERR',
 				message => "Unknown table $tn"
 			  }
-			  unless _populated_table(make_name($tn));
+			  unless _exists_row(make_name($tn));
 			push @from, [$tn, $ta];
 		} else {
 			my $cmd = substr ($le, 1);
@@ -1020,27 +1011,23 @@ sub _build_complex_query {
 			} elsif ($cmd eq 'join') {
 				$from[-1][_table_join] = 'join';
 			} elsif ($cmd eq 'on') {
-				my ($on) = splice @linked_list, $i + 1, 1;
-				$from[-1][_table_join_on] = ["on", $on];
+				$from[-1][_table_join_on] = ["on", $linked_list[++$i]];
 			} elsif ($cmd eq 'using') {
-				my ($using) = splice @linked_list, $i + 1, 1;
-				$from[-1][_table_join_on] = ["using", $using];
+				$from[-1][_table_join_on] = ["using", $linked_list[++$i]];
 			} elsif ($cmd eq 'as') {
-				($from[-1][_table_alias]) = splice @linked_list, $i + 1, 1;
+				$from[-1][_table_alias] = $linked_list[++$i];
 			} elsif ($cmd eq 'where') {
-				($conditions) = splice @linked_list, $i + 1, 1;
+				$conditions = $linked_list[++$i];
 			} elsif ($cmd eq 'group_by') {
-				($groupby) = splice @linked_list, $i + 1, 1;
+				$groupby = $linked_list[++$i];
 			} elsif ($cmd eq 'having') {
-				($having) = splice @linked_list, $i + 1, 1;
+				$having = $linked_list[++$i];
 			} elsif ($cmd eq 'limit') {
-				($limit) = splice @linked_list, $i + 1, 1;
-				$limit += 0;
+				$limit = 0 + $linked_list[++$i];
 			} elsif ($cmd eq 'offset') {
-				($offset) = splice @linked_list, $i + 1, 1;
-				$offset += 0;
+				$offset = 0 + $linked_list[++$i];
 			} elsif ($cmd eq 'columns') {
-				my ($cols) = splice @linked_list, $i + 1, 1;
+				my $cols = $linked_list[++$i];
 				if (ref ($cols)) {
 					push @columns, @$cols;
 				} else {
