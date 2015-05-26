@@ -880,6 +880,7 @@ RT
 	my $accessors = '';
 	for my $k (keys %fields) {
 		next if exists $keywords{$k};
+		next if $k =~ /^\d/;
 		$k =~ s/[^\w\d]/_/g;
 		if (!exists ($pk_fields{$k}) && (not ref $table)) {
 			$accessors .= <<ACC;
