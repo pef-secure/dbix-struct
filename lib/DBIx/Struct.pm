@@ -695,7 +695,7 @@ sub setup_row {
 				while (my $chr = $cih->fetchrow_hashref) {
 					$chr->{COLUMN_NAME} =~ s/"//g;
 					push @fields, $chr->{COLUMN_NAME};
-					if ($chr->{TYPE_NAME} =~ /timestamp/) {
+					if ($chr->{TYPE_NAME} =~ /^time/) {
 						push @timestamp_fields, $chr->{COLUMN_NAME};
 					}
 					if ($chr->{NULLABLE} == 0 && !defined ($chr->{COLUMN_DEF})) {
@@ -743,7 +743,7 @@ sub setup_row {
 				for (my $cn = 0 ; $cn < @{$table->{NAME}} ; ++$cn) {
 					my $ti = $_->type_info($table->{TYPE}->[$cn]);
 					push @timestamp_fields, $table->{NAME}->[$cn]
-					  if $ti && $ti->{TYPE_NAME} =~ /timestamp/;
+					  if $ti && $ti->{TYPE_NAME} =~ /^time/;
 				}
 			}
 		);
