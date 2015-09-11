@@ -576,20 +576,22 @@ sub make_object_fetch {
 				}
 				(\$where, \@bind) = SQL::Abstract->new->where(\$cond);
 				DBIx::Struct::connect->run(sub {
-					\$self->[@{[_row_data]}] = [\$_->selectrow_array(qq{select * from $table \$where}, undef, \@bind)
+					my \$rowref = \$_->selectrow_arrayref(qq{select * from $table \$where}, undef, \@bind)
 					or DBIx::Struct::error_message {
 						result  => 'SQLERR',
 						message => 'error '.\$_->errstr.' fetching table $table'
-					}]
+					};
+					\$self->[@{[_row_data]}] = [\@\$rowref]; 
 				});
 			} else {
 				DBIx::Struct::connect->run(
 					sub {
-						\$self->[@{[_row_data]}] = [\$_->selectrow_array(qq{select *  from $table where $pk_where}, undef, $pk_row_data)
+						my \$rowref = \$_->selectrow_arrayref(qq{select *  from $table where $pk_where}, undef, $pk_row_data)
 						or DBIx::Struct::error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' fetching table $table'
-						}]
+						}
+						\$self->[@{[_row_data]}] = [\@\$rowref];
 					});
 			}
 			\$self;
