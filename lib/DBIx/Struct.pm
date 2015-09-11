@@ -1284,7 +1284,7 @@ sub one_row {
 			my $data = $sth->fetchrow_arrayref;
 			$sth->finish;
 			return if not $data;
-			return $ncn->new($data);
+			return $ncn->new([@$data]);
 		},
 		@_
 	);
