@@ -590,7 +590,7 @@ sub make_object_fetch {
 						or DBIx::Struct::error_message {
 							result  => 'SQLERR',
 							message => 'error '.\$_->errstr.' fetching table $table'
-						}
+						};
 						\$self->[@{[_row_data]}] = [\@\$rowref];
 					});
 			}
