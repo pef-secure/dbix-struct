@@ -311,6 +311,15 @@ NEW
 							CORE::push \@bind, \@{\$insert{\$_}}[1..\$#{\$insert{\$_}}];
 							CORE::push \@values, \${\$insert{\$_}[0]};
 							"\$_";
+						} elsif(CORE::ref(\$insert{\$_}) eq 'REF' and CORE::ref(\${\$insert{\$_}}) eq 'ARRAY') {
+							if(CORE::defined \${\$insert{\$_}}->[0]) {
+								CORE::push \@bind, \@{\${\$insert{\$_}}}[1..\$#{\${\$insert{\$_}}}];
+								CORE::push \@values, \${\$insert{\$_}}->[0];
+								"\$_";
+							} else {
+								CORE::push \@values, "null";
+								"\$_"
+							}
 						} elsif(CORE::ref(\$insert{\$_}) eq 'SCALAR') {
 							CORE::push \@values, \${\$insert{\$_}};
 							"\$_";
@@ -453,6 +462,14 @@ sub make_object_update {
 							if(CORE::ref(\$set_hash{\$_}) eq 'ARRAY' and CORE::ref(\$set_hash{\$_}[0]) eq 'SCALAR') {
 								CORE::push \@bind, \@{\$set_hash{\$_}}[1..\$#{\$set_hash{\$_}}];
 								"\$_ = " . \${\$set_hash{\$_}[0]};
+							} elsif(CORE::ref(\$set_hash{\$_}) eq 'REF' and CORE::ref(\${\$set_hash{\$_}}) eq 'ARRAY') {
+								if(CORE::defined \${\$set_hash{\$_}}->[0]) {
+									CORE::push \@bind, \@{\${\$set_hash{\$_}}}[1..\$#{\${\$set_hash{\$_}}}];
+									CORE::push \@values, \${\$set_hash{\$_}}->[0];
+									"\$_ = " . \${\$set_hash{\$_}}->[0];
+								} else {
+									"\$_ = null"
+								}
 							} elsif(CORE::ref(\$set_hash{\$_}) eq 'SCALAR') {
 								"\$_ = " . \${\$set_hash{\$_}};
 							} else {
@@ -475,7 +492,7 @@ sub make_object_update {
 						message => 'error '.\$_->errstr.' updating table $table'
 					}
 				});
-			} elsif (\@\$self > 1 && \%{\$self->[@{[_row_updates]}]}) {
+			} elsif (CORE::ref(\$self) && \@\$self > 1 && \%{\$self->[@{[_row_updates]}]}) {
 				my (\$set, \@bind);
 				{
 					no strict 'vars';
@@ -486,6 +503,13 @@ sub make_object_update {
 							if(CORE::ref(\$column_value) eq 'ARRAY' and CORE::ref(\$column_value->[0]) eq 'SCALAR') {
 								CORE::push \@bind, \@{\$column_value}[1..\$#\$column_value];
 								"\$_ = " . \${\$column_value->[0]};
+							} elsif(CORE::ref(\$column_value) eq 'REF' and CORE::ref(\${\$column_value}) eq 'ARRAY') {
+								if(CORE::defined \${\$column_value}->[0]) {
+									CORE::push \@bind, \@{\${\$column_value}}[1..\$#{\${\$column_value}}];
+									"\$_ = " . \${\$column_value}->[0];
+								} else {
+									"\$_ = null"
+								}
 							} elsif(CORE::ref(\$column_value) eq 'SCALAR') {
 								"\$_ = " . \$\$column_value;
 							} else {
