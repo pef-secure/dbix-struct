@@ -458,22 +458,71 @@ C<refEmployeeInvitedBy> and C<refEmployeeInvitedBys>.
 
 =head2 Real-world usage scenarios 
 
-  sub get_client {
-  # get session object
-    my $session = one_row("session", {session => $input->{session}, ip => $input->{ip}});
-  # throw exception when there's no session
-    NoUser->throw("User is not logged in or does not exist") unless defined $session;
-  # get client's row
-    my $client = $session->Client;
-  # strip microseconds part
-    $client->filter_timestamp;
-  # throw exception if client is blocked
-    BlkUser->throw   if $client->state eq 'blocked';
-  # set expire date
-    $session->expire(\"now() + interval '2 day'");
-  # update session
-    $session->update;
-    return $client;
+  sub get_articles {
+    my $req = $_[0];
+    my $articles = all_rows(
+      [  # tables are automatically joined by FK->PK
+         "article a" => -join => "author w",
+        -columns => ['a.*', 'w.name author']
+      ],
+      -order_by => {-desc => 'id_article'},
+      -limit    => $req->{limit},
+      -offset   => $req->{offset},
+      # strip miliseconds from timestamps and return anonymous hash for every row
+      sub { $_->filter_timestamp->data }
+    );
+    for my $article (@$articles) {
+      $article->{comment_count} =
+      # second unnamed argument is "where"
+        one_row([comment => -columns => 'count(*)'], {id_article => $article->{id_article}})->count;
+    }
+    return {
+      result   => "OK",
+      articles => $articles,
+      count    => one_row([article => -columns => 'count(*)'])->count
+    };
+  }
+
+  sub get_article_with_comments {
+    my $req = $_[0];
+    # second unnamed argument is "where" and plain scalar means it is primary key value
+    my $article = one_row(article => $req->{id_article});
+    return {
+      result => "NO_ARTICLE",
+      answer => "No such article"
+    } unless $article;
+    # transform object into hash
+    my $article_hash = $article->filter_timestamp->data;
+    # get author's name by executing one_row("author", { id_author => $article->id_author })->name
+    $article_hash->{author} = $article->Author->name;
+    return {
+      result   => "OK",
+      article  => $article_hash,
+      # execute complex recursive query
+      comments => connector->run(
+        sub {
+          $_->selectall_arrayref(
+            q{
+              with recursive article_comments(depth, path) as (
+                select 1 depth, array[id_comment] path, id_comment, 
+                  id_comment_parent, comment, author,
+                  date_trunc('seconds', pub_date) pub_date
+                from comment
+                where id_article = ? and id_comment_parent is null
+                union all
+                select depth + 1, path || array[c.id_comment] path, c.id_comment, 
+                  c.id_comment_parent, c.comment, c.author,
+                  date_trunc('seconds', c.pub_date) pub_date
+                from comment c, article_comments cs
+                where c.id_comment_parent = cs.id_comment
+              ) select * from article_comments order by path, id_comment
+            },
+            {Slice => {}},
+            $req->{id_article}
+          );
+        }
+      )
+    };
   }
 
 =head1 Known issues
