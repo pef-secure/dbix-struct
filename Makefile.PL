@@ -1,11 +1,12 @@
 use ExtUtils::MakeMaker;
 WriteMakefile(
-	NAME        => "SQL::Struct",
-	AUTHOR      => "Pef Secure",
-	VERSION     => "0.03",
-	INSTALLDIRS => 'site',
-	LICENSE     => "Artistic_2_0",
-	META_MERGE  => {
+	NAME             => "DBIx::Struct",
+	AUTHOR           => "Pef Secure",
+	VERSION          => "0.04",
+	INSTALLDIRS      => 'site',
+	LICENSE          => "Artistic_2_0",
+	MIN_PERL_VERSION => "5.014",
+	META_MERGE       => {
 		"meta-spec" => {version => 2},
 		resources   => {
 			bugtracker => {web => 'https://github.com/pef-secure/dbix-struct/issues'},
@@ -18,12 +19,7 @@ WriteMakefile(
 	},
 	PREREQ_PM => {
 		'DBIx::Connector' => "0.53",
-		'Exporter'        => 0,
-		'Carp'            => 0,
-		'Data::Dumper'    => 0,
 		'Digest::MD5'     => 0,
-		'warnings'        => 0,
-		'strict'          => 0,
 		'SQL::Abstract'   => 0,
 	},
 	test => {TESTS => "t/*.t"},
