@@ -1,7 +1,7 @@
 requires 'DBIx::Connector';
 requires 'Digest::MD5';
 requires 'SQL::Abstract';
-requires 'perl', 'v5.10.0';
+requires 'perl', 'v5.14.0';
 
 on configure => sub {
     requires 'ExtUtils::MakeMaker';

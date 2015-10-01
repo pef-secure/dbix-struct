@@ -2,10 +2,10 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
 	NAME             => "DBIx::Struct",
 	AUTHOR           => "Pef Secure",
-	VERSION          => "0.04",
+	VERSION          => "0.05",
 	INSTALLDIRS      => 'site',
-	LICENSE          => "Artistic_2_0",
-	MIN_PERL_VERSION => "5.014",
+	LICENSE          => "artistic_2",
+	MIN_PERL_VERSION => "5.14",
 	META_MERGE       => {
 		"meta-spec" => {version => 2},
 		resources   => {
@@ -18,12 +18,13 @@ WriteMakefile(
 		},
 	},
 	PREREQ_PM => {
-		'DBIx::Connector' => "0.53",
+		'DBIx::Connector' => "0.52",
 		'Digest::MD5'     => 0,
 		'SQL::Abstract'   => 0,
 	},
-	test => {TESTS => "t/*.t"},
-	dist => {
+	TEST_REQUIRES => {'Test::More' => 0},
+	test          => {TESTS        => "t/*.t"},
+	dist          => {
 		DIST_DEFAULT => 'all tardist',
 		COMPRESS     => 'gzip -vf',
 		SUFFIX       => '.gz',
