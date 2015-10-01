@@ -45,7 +45,7 @@ use Data::Dumper;
 use base 'Exporter';
 use v5.10;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 our @EXPORT = qw{
   one_row

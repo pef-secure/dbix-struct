@@ -2,10 +2,10 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
 	NAME             => "DBIx::Struct",
 	AUTHOR           => "Pef Secure",
-	VERSION          => "0.05",
+	VERSION          => "0.06",
 	INSTALLDIRS      => 'site',
 	LICENSE          => "artistic_2",
-	MIN_PERL_VERSION => "5.14",
+	MIN_PERL_VERSION => "5.014000",
 	META_MERGE       => {
 		"meta-spec" => {version => 2},
 		resources   => {
